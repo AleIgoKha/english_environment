@@ -1,0 +1,12 @@
+.git/
+.venv/
+.env
+.env.*
+*.sqlite3
+*.sqlite3-*
+**/__pycache__/
+.local/
+.railway/
+private_exports/
+staticfiles/
+*.log

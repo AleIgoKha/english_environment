@@ -1,0 +1,29 @@
+{% extends 'cards/base.html' %}
+{% block layout_class %}layout-login{% endblock %}
+{% block title %}Welcome · Word by word{% endblock %}
+{% block content %}
+<section class="welcome">
+  <span class="eyebrow">YOUR ENGLISH, EVERY DAY</span>
+  <h1>Small steps.<br>More words.</h1>
+  <p class="intro">A quiet space to make English stick.</p>
+</section>
+<section class="panel login-panel" aria-labelledby="login-title">
+  <span class="card-symbol" aria-hidden="true">✦</span>
+  <h2 id="login-title">Welcome back</h2>
+  {% if unconfigured %}
+    <p role="alert">Your private space isn't configured yet. Complete the local setup or set the server's PIN configuration.</p>
+  {% else %}
+    <p class="muted">Enter your four-digit PIN to get started.</p>
+    <form method="post" class="stack">
+      {% csrf_token %}
+      <div>
+        <label for="pin">Your PIN</label>
+        <input id="pin" class="pin-input" name="pin" type="password" inputmode="numeric" pattern="[0-9]{4}" minlength="4" maxlength="4" autocomplete="current-password" required {% if error %}aria-invalid="true" aria-describedby="login-error"{% endif %}>
+      </div>
+      {% if error %}<p class="error" id="login-error" role="alert">{{ error }}</p>{% endif %}
+      <button class="button button-primary" type="submit">Unlock my words <span aria-hidden="true">→</span></button>
+    </form>
+    <p class="fine-print">Your login stays remembered for 30 days.</p>
+  {% endif %}
+</section>
+{% endblock %}

@@ -1,0 +1,27 @@
+{% extends 'cards/base.html' %}
+{% block title %}Practice · Word by word{% endblock %}
+{% block layout_class %}layout-form layout-study{% endblock %}
+{% block header_actions %}{% include 'cards/_navigation.html' %}{% endblock %}
+{% block content %}
+<section class="page-heading">
+  <span class="eyebrow">A MOMENT WELL SPENT</span>
+  <h1>{% if last_session.total_words %}Session complete.{% else %}All caught up.{% endif %}</h1>
+  <p class="intro">A little practice makes a difference.</p>
+</section>
+<section class="panel form-panel" aria-label="Practice summary">
+  {% if due_count %}
+    <h2>{{ due_count }} more word{{ due_count|pluralize }} ready</h2>
+    <p class="muted">Start a new session when you're ready.</p>
+    <form method="post" action="{% url 'study-start' %}">{% csrf_token %}<button class="button button-primary" type="submit">Start next session</button></form>
+  {% elif next_word %}
+    <h2>You're done for now</h2>
+    <p class="muted">Your next review is {{ next_word.due_at|date:"j M Y" }}. Come back then, or add a new word.</p>
+    <a class="button button-secondary" href="{% url 'word-add' %}">Add word</a>
+  {% else %}
+    <h2>Make room for something new</h2>
+    <p class="muted">Add a word to your deck whenever you're ready. Learned words are waiting in your archive.</p>
+    <a class="button button-secondary" href="{% url 'word-add' %}">Add word</a>
+  {% endif %}
+  <a class="button button-secondary summary-home" href="{% url 'home' %}">Back home</a>
+</section>
+{% endblock %}

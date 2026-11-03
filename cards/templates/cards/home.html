@@ -1,0 +1,36 @@
+{% extends 'cards/base.html' %}
+{% block layout_class %}layout-home{% endblock %}
+{% block header_actions %}
+{% include 'cards/_navigation.html' %}
+{% endblock %}
+{% block content %}
+<section class="welcome home-welcome">
+  <span class="eyebrow">ONE WORD AT A TIME</span>
+  <h1>Make room<br>for new words.</h1>
+  <p class="intro">Your everyday English starts here.</p>
+</section>
+<section class="practice-panel panel" aria-labelledby="practice-title">
+  <div class="section-heading"><h2 id="practice-title">A little practice</h2><span class="badge">{{ due_count }} due</span></div>
+  <p class="muted">{% if word_count %}Keep the words you want to make your own.{% else %}Your next chapter starts with your first word.{% endif %}</p>
+  <div class="stack">
+    <form method="post" action="{% url 'study-start' %}">
+      {% csrf_token %}
+      <button class="button button-primary" type="submit">{% if has_session %}Resume{% else %}Start{% endif %} <span aria-hidden="true">→</span></button>
+    </form>
+    <a class="button button-secondary" href="{% url 'word-add' %}"><span aria-hidden="true">+</span> Add word</a>
+  </div>
+  <p class="fine-print">{% if has_session %}Your session is saved. Pick up where you left off.{% else %}Review new and due words, a little at a time.{% endif %}</p>
+</section>
+<section class="words-section" aria-labelledby="words-title">
+  <div class="section-heading"><h2 id="words-title">Your words</h2><span class="word-count">{{ word_count }} word{{ word_count|pluralize }}</span></div>
+  {% if words %}
+    {% include 'cards/_word_list.html' %}
+  {% else %}
+  <div class="empty-state">
+    <div class="empty-cards" aria-hidden="true"><span></span><span>hello.</span></div>
+    <h3>A fresh start</h3>
+    <p>Add your first chunk to start<br>building your collection.</p>
+  </div>
+  {% endif %}
+</section>
+{% endblock %}

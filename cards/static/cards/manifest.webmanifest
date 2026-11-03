@@ -1,0 +1,16 @@
+{
+  "id": "/",
+  "name": "Word by word",
+  "short_name": "Words",
+  "description": "Your private English word collection and daily practice.",
+  "lang": "en",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f7f4fc",
+  "theme_color": "#f7f4fc",
+  "icons": [
+    {"src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any"},
+    {"src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable"}
+  ]
+}

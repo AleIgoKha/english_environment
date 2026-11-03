@@ -1,0 +1,20 @@
+<ul class="word-list">
+  {% for word in words %}
+  <li class="word-card">
+    <div class="section-heading">
+      <h3 class="word-chunk"><a href="{% url 'word-edit' word.pk %}">{{ word.chunk }}</a></h3>
+      <a class="nav-link" href="{% url 'word-edit' word.pk %}" aria-label="Edit {{ word.chunk }}">Edit</a>
+    </div>
+    {% if word.meaning %}<p class="word-meaning">{{ word.meaning|linebreaksbr }}</p>{% endif %}
+    {% if word.example %}<blockquote class="word-example">{{ word.example|linebreaksbr }}</blockquote>{% endif %}
+    {% if archived %}
+      <form method="post" action="{% url 'word-restore' word.pk %}" class="restore-form">
+        {% csrf_token %}
+        <button class="button button-secondary" type="submit" aria-label="Restore {{ word.chunk }} to deck">Restore to deck</button>
+      </form>
+    {% else %}
+      <p class="word-status">{% if word.due_at <= now %}Ready to review{% else %}Next review: {{ word.due_at|date:"j M Y" }}{% endif %}</p>
+    {% endif %}
+  </li>
+  {% endfor %}
+</ul>

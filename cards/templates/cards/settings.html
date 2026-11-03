@@ -1,0 +1,35 @@
+{% extends 'cards/base.html' %}
+{% block title %}Settings · Word by word{% endblock %}
+{% block layout_class %}layout-form{% endblock %}
+{% block header_actions %}{% include 'cards/_navigation.html' %}{% endblock %}
+{% block content %}
+<section class="page-heading">
+  <span class="eyebrow">AT YOUR OWN PACE</span>
+  <h1>Your rhythm.</h1>
+  <p class="intro">Choose how much practice makes a word feel familiar.</p>
+</section>
+<section class="panel form-panel" aria-label="Learning settings">
+  {% if saved %}<p class="success-note" role="status">Settings saved.</p>{% endif %}
+  <form method="post" action="{% url 'learning-settings' %}" class="stack word-form">
+    {% csrf_token %}
+    {{ form.non_field_errors }}
+    {% for field in form %}
+    <div>
+      <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+      {{ field }}
+      {{ field.errors }}
+      <p class="field-help" id="{{ field.auto_id }}_helptext">{{ field.help_text }}</p>
+    </div>
+    {% endfor %}
+    <p class="muted">Know moves a word forward once per session. Repeat moves it back one stage; Don't know moves it back two. Setbacks never stack beyond two stages within a session.</p>
+    <p class="muted">Changes apply when you next review a word. Saved review dates and archived words stay as they are.</p>
+    <div class="form-actions">
+      <button class="button button-primary" type="submit">Save settings</button>
+      <a class="button button-secondary" href="{% url 'home' %}">Back home</a>
+    </div>
+  </form>
+  <div class="delete-link">
+    <form method="post" action="{% url 'logout' %}">{% csrf_token %}<button class="text-button" type="submit">Log out of this device</button></form>
+  </div>
+</section>
+{% endblock %}
