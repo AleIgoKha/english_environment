@@ -52,6 +52,12 @@ class HealthTests(TestCase):
 
 
 class HomeScreenAssetTests(SimpleTestCase):
+    @override_settings(DEBUG=False, WHITENOISE_USE_FINDERS=True, WHITENOISE_AUTOREFRESH=True)
+    def test_manifest_has_installable_content_type(self):
+        response = self.client.get("/static/cards/manifest.webmanifest")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Content-Type"].split(";")[0], "application/manifest+json")
+
     def test_manifest_and_png_sizes(self):
         assets = Path(settings.BASE_DIR) / "cards" / "static" / "cards"
         manifest = json.loads((assets / "manifest.webmanifest").read_text(encoding="utf-8"))

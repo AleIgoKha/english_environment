@@ -1,0 +1,10 @@
+{
+  "build.builder": "DOCKERFILE",
+  "build.dockerfilePath": "Dockerfile",
+  "deploy.preDeployCommand": ["python manage.py migrate --noinput"],
+  "deploy.startCommand": "python scripts/start.py",
+  "deploy.healthcheckPath": "/health/",
+  "deploy.healthcheckTimeout": 120,
+  "deploy.restartPolicyType": "ON_FAILURE",
+  "deploy.restartPolicyMaxRetries": 3
+}

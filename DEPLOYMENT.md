@@ -12,7 +12,9 @@
 
 ## How deployments work
 
-Railway's native GitHub source tracks `main`. The repository's Dockerfile installs pinned dependencies and runs as an unprivileged user. `railway.json` runs migrations before release and requires `/health/` to return 200. At startup, `scripts/start.py` checks production security settings, collects static assets, and launches Gunicorn. WhiteNoise serves CSS, the manifest, and icons from that container. Python startup avoids Windows CRLF shell-script failures.
+Railway's native GitHub source tracks `main`. The repository's Dockerfile installs pinned dependencies and runs as an unprivileged user. The service's deployment settings run migrations before release and require `/health/` to return 200. At startup, `scripts/start.py` checks production security settings, collects static assets, and launches Gunicorn. WhiteNoise serves CSS, the manifest, and icons from that container. Python startup avoids Windows CRLF shell-script failures.
+
+Railway no longer applies legacy `railway.json` to new services. The small, non-secret profile `scripts/railway_service.json` records our build/deploy settings. `scripts/apply_railway_config.py` applies those settings to exactly one explicitly selected service with Railway CLI v5. Reapply it only when that profile changes; normal code pushes use the existing native GitHub deployment connection. This avoids adding a TypeScript infrastructure toolchain or managing unrelated services in My Tools.
 
 The app requires PostgreSQL when debug is disabled: it will not silently create a disposable SQLite database in production. Database storage belongs to the dedicated PostgreSQL service, so replacing the app container does not replace saved words. Migrations create missing tables and seed singleton settings; they do not erase data on later deployments.
 
