@@ -14,7 +14,16 @@
 
 Railway's native GitHub source tracks `main`. The repository's Dockerfile installs pinned dependencies and runs as an unprivileged user. The service's deployment settings run migrations before release and require `/health/` to return 200. At startup, `scripts/start.py` checks production security settings, collects static assets, and launches Gunicorn. WhiteNoise serves CSS, the manifest, and icons from that container. Python startup avoids Windows CRLF shell-script failures.
 
-Railway no longer applies legacy `railway.json` to new services. The small, non-secret profile `scripts/railway_service.json` records our build/deploy settings. `scripts/apply_railway_config.py` applies those settings to exactly one explicitly selected service with Railway CLI v5. Reapply it only when that profile changes; normal code pushes use the existing native GitHub deployment connection. This avoids adding a TypeScript infrastructure toolchain or managing unrelated services in My Tools.
+Railway no longer applies legacy `railway.json` to new services. The small, non-secret profile `scripts/railway_service.json` records our build/deploy settings. `scripts/apply_railway_config.py` uses the existing Railway CLI login with Railway's public API, verifies the service belongs to the selected project, applies the profile, and reads it back to verify it persisted. Pass exact project, environment, and service IDs. Reapply only when that profile changes; normal code pushes use the native GitHub deployment connection. This avoids adding a TypeScript infrastructure toolchain or managing unrelated services in My Tools.
+
+The API's `RAILPACK` builder automatically detects the Dockerfile; `DOCKERFILE` is not a valid public-API builder enum. The native repository source and push trigger are separate: both must exist. The helper can ensure the exact repo/branch trigger without duplicating it. GitHub's Railway app must be allowed to access this repository, independently of the OpenAI/Codex GitHub app.
+
+Prerequisites: Railway CLI already authenticated, this project's virtual environment installed, and Railway's GitHub app granted access to this repository. Reapply the service profile from PowerShell with:
+
+```powershell
+Set-Location 'C:\Users\Alexei Harcenco\Documents\Repositories\english_environment'
+.\.venv\Scripts\python.exe scripts/apply_railway_config.py --project 01debade-17e6-4ad3-a9dd-ddbd14373e24 --environment 550023b3-036b-4e9d-aca5-aa1c32478ac4 --service 8e816988-cec0-4d63-89d5-ecd745a0ba81 --repository AleIgoKha/english_environment --branch main
+```
 
 The app requires PostgreSQL when debug is disabled: it will not silently create a disposable SQLite database in production. Database storage belongs to the dedicated PostgreSQL service, so replacing the app container does not replace saved words. Migrations create missing tables and seed singleton settings; they do not erase data on later deployments.
 
@@ -74,6 +83,12 @@ Backup availability depends on the Railway workspace plan. Confirm supported Pos
 - Production settings check and static collection: passed locally.
 - Full functional suite: 71 tests passed on isolated PostgreSQL.
 - Real concurrent Start and duplicate-answer requests: 2 additional PostgreSQL tests passed.
-- GitHub publication, native source connection, live deployment, owner login, persistence across redeployment, and iPhone visual checks: record outcomes as they are completed.
+- GitHub publication and native source connection: completed for `AleIgoKha/english_environment`, `main`.
+- Production migrations: applied successfully to the dedicated PostgreSQL service.
+- Healthy release: `a082aa55-43c6-4ba8-9042-0613d6ae2f24`, built from GitHub commit `e5421313a83dd3d866d49dc937e8c040585db4c3`.
+- Live health and static assets: verified. Private routes redirect anonymous visitors to PIN login. Production debug is disabled and HTTPS protections are enabled.
+- Native push trigger: created after Railway's GitHub app was granted repository access; verify the next push below.
+- No local word data was imported. The PostgreSQL service uses private networking; no public database proxy or account-wide SSH keys were added for verification.
+- Owner PIN login, word/progress persistence checked from the owner's device, and real iPhone Home Screen visual acceptance: pending manual checks.
 
 References: [Railway config](https://docs.railway.com/config-as-code/reference), [Railway health checks](https://docs.railway.com/deployments/healthchecks), [WhiteNoise](https://whitenoise.readthedocs.io/en/stable/django.html), [Django proxy settings](https://docs.djangoproject.com/en/5.2/ref/settings/#secure-proxy-ssl-header).

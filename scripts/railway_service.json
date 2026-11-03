@@ -1,5 +1,5 @@
 {
-  "build.builder": "DOCKERFILE",
+  "build.builder": "RAILPACK",
   "build.dockerfilePath": "Dockerfile",
   "deploy.preDeployCommand": ["python manage.py migrate --noinput"],
   "deploy.startCommand": "python scripts/start.py",

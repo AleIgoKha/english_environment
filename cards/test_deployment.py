@@ -1,6 +1,8 @@
 """Deployment readiness, HTTPS proxy handling, and Home Screen assets."""
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import redirect_stdout
+import io
 from threading import Barrier
 from unittest import skipUnless
 from unittest.mock import patch
@@ -15,6 +17,7 @@ from django.urls import reverse
 from . import learning
 from .models import LearningSettings, StudySession, Word
 from .tests import TEST_HASH
+from scripts import apply_railway_config
 
 
 @override_settings(APP_PIN_HASH=TEST_HASH)
@@ -67,6 +70,45 @@ class HomeScreenAssetTests(SimpleTestCase):
             data = (assets / name).read_bytes()
             self.assertEqual(data[:8], b"\x89PNG\r\n\x1a\n")
             self.assertEqual(struct.unpack(">II", data[16:24]), (size, size))
+
+
+class RailwayConfigurationTests(SimpleTestCase):
+    def setUp(self):
+        path = Path(settings.BASE_DIR) / "scripts" / "railway_service.json"
+        profile = json.loads(path.read_text(encoding="utf-8"))
+        self.expected = {key.split(".", 1)[1]: value for key, value in profile.items()}
+        self.arguments = ["apply_railway_config", "--project", "project-test", "--service", "service-test", "--environment", "env-test"]
+
+    def run_config(self, responses, extra=()):
+        with patch("sys.argv", [*self.arguments, *extra]), redirect_stdout(io.StringIO()):
+            with patch.object(apply_railway_config, "railway_api", side_effect=responses) as api:
+                apply_railway_config.main()
+                return api.call_args_list
+
+    def test_wrong_project_cannot_mutate_a_service(self):
+        with patch("sys.argv", self.arguments), redirect_stdout(io.StringIO()):
+            with patch.object(apply_railway_config, "railway_api", return_value={"service": {"projectId": "other-project"}}) as api:
+                with self.assertRaises(SystemExit):
+                    apply_railway_config.main()
+                self.assertEqual(api.call_count, 1)
+
+    def test_saved_profile_mismatch_is_reported_as_failure(self):
+        responses = [{"service": {"projectId": "project-test"}}, {"serviceInstanceUpdate": True}, {"serviceInstance": {**self.expected, "healthcheckPath": None}}]
+        with self.assertRaises(SystemExit):
+            self.run_config(responses)
+
+    def test_existing_matching_trigger_is_not_duplicated(self):
+        trigger = {"id": "trigger-test", "branch": "main", "repository": "owner/repo", "environmentId": "env-test"}
+        responses = [{"service": {"projectId": "project-test"}}, {"serviceInstanceUpdate": True}, {"serviceInstance": self.expected}, {"service": {"repoTriggers": {"edges": [{"node": trigger}]}}}]
+        calls = self.run_config(responses, ["--repository", "owner/repo"])
+        self.assertEqual(len(calls), 4)
+
+    def test_missing_trigger_is_created_for_exact_service_and_environment(self):
+        trigger = {"id": "trigger-test", "branch": "main", "repository": "owner/repo", "environmentId": "env-test"}
+        responses = [{"service": {"projectId": "project-test"}}, {"serviceInstanceUpdate": True}, {"serviceInstance": self.expected}, {"service": {"repoTriggers": {"edges": []}}}, {"deploymentTriggerCreate": trigger}]
+        calls = self.run_config(responses, ["--repository", "owner/repo"])
+        payload = calls[-1].args[1]["input"]
+        self.assertEqual((payload["projectId"], payload["serviceId"], payload["environmentId"], payload["repository"], payload["branch"]), ("project-test", "service-test", "env-test", "owner/repo", "main"))
 
 
 @skipUnless(connection.vendor == "postgresql", "Real concurrent request checks require PostgreSQL")
