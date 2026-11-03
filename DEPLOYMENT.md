@@ -81,13 +81,13 @@ Backup availability depends on the Railway workspace plan. Confirm supported Pos
 ## Validation status
 
 - Production settings check and static collection: passed locally.
-- Full functional suite: 71 tests passed on isolated PostgreSQL.
-- Real concurrent Start and duplicate-answer requests: 2 additional PostgreSQL tests passed.
+- Full final suite: 78 tests passed on isolated PostgreSQL, including real concurrent Start/duplicate-answer requests, installable manifest assets, and deployment-profile safety checks.
 - GitHub publication and native source connection: completed for `AleIgoKha/english_environment`, `main`.
 - Production migrations: applied successfully to the dedicated PostgreSQL service.
-- Healthy release: `a082aa55-43c6-4ba8-9042-0613d6ae2f24`, built from GitHub commit `e5421313a83dd3d866d49dc937e8c040585db4c3`.
+- Verified automatic release: `9edcd6a5-61fe-4767-af88-253627cf1a87`, triggered by publishing GitHub commit `8c17e29a661d564fc87b506bbf8f1c8ed07523b2` to `main`.
 - Live health and static assets: verified. Private routes redirect anonymous visitors to PIN login. Production debug is disabled and HTTPS protections are enabled.
-- Native push trigger: created after Railway's GitHub app was granted repository access; verify the next push below.
+- Native push trigger: verified for `AleIgoKha/english_environment`, `main`, production, and this app service only. Trigger ID: `01f22e81-fd54-4eb6-bdb0-8cf14824bccf`. The subsequent push started and completed a new deployment without a manual deploy command.
+- PostgreSQL migration history and initialized schema survived replacement of the app container; the later deployment reported `No migrations to apply` and passed readiness. Actual owner word/progress checks remain separate below.
 - No local word data was imported. The PostgreSQL service uses private networking; no public database proxy or account-wide SSH keys were added for verification.
 - Owner PIN login, word/progress persistence checked from the owner's device, and real iPhone Home Screen visual acceptance: pending manual checks.
 
