@@ -5,16 +5,17 @@ import secrets
 import subprocess
 import sys
 
-from django.contrib.auth.hashers import PBKDF2PasswordHasher
 
 
 def main():
-    hasher = PBKDF2PasswordHasher()
     environment = os.environ.copy()
     environment.update({
         "DJANGO_SETTINGS_MODULE": "config.settings",
         "DJANGO_SECRET_KEY": secrets.token_urlsafe(48),
-        "APP_PIN_HASH": hasher.encode(secrets.token_urlsafe(32), hasher.salt()),
+        "GOOGLE_CLIENT_ID": "test-client",
+        "GOOGLE_CLIENT_SECRET": secrets.token_urlsafe(32),
+        "ALLOWED_GOOGLE_EMAIL": "owner@example.invalid",
+        "DJANGO_LOCAL_TEST_LOGIN": "false",
         "DJANGO_DEBUG": "false",
         "DJANGO_ALLOWED_HOSTS": "checks.example.invalid",
         "DATABASE_URL": "postgresql://test_fixture:test_fixture@127.0.0.1:55434/checks",

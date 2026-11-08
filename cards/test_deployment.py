@@ -15,12 +15,12 @@ from django.test import SimpleTestCase, TestCase, TransactionTestCase, override_
 from django.urls import reverse
 
 from . import learning
-from .models import LearningSettings, StudySession, Word
-from .tests import TEST_HASH
+from .models import LearningSettings, StudyReview, StudySession, Word
+from .tests import GOOGLE_SETTINGS
 from scripts import apply_railway_config
 
 
-@override_settings(APP_PIN_HASH=TEST_HASH)
+@override_settings(**GOOGLE_SETTINGS)
 class HealthTests(TestCase):
     def test_health_is_public_and_reports_only_status(self):
         response = self.client.get(reverse("health"))
@@ -28,8 +28,8 @@ class HealthTests(TestCase):
         self.assertEqual(response.json(), {"status": "ok"})
         self.assertIn("no-store", response["Cache-Control"])
 
-    def test_unconfigured_pin_fails_readiness(self):
-        with override_settings(APP_PIN_HASH=""):
+    def test_unconfigured_google_fails_readiness(self):
+        with override_settings(GOOGLE_CLIENT_SECRET="", LOCAL_TEST_LOGIN=False):
             response = self.client.get(reverse("health"))
         self.assertEqual(response.status_code, 503)
         self.assertEqual(response.json(), {"status": "unavailable"})
@@ -144,4 +144,34 @@ class PostgresConcurrencyTests(TransactionTestCase):
         session.refresh_from_db()
         self.assertEqual(self.word.stage, 1)
         self.assertEqual(session.queue, [])
-        self.assertIsNotNone(session.completed_at)
+        self.assertIsNone(session.completed_at)
+
+
+    def test_concurrent_duplicate_undo_reverts_only_one_answer(self):
+        second = Word.objects.create(chunk="second undo test")
+        session = learning.start_or_resume()
+        for _ in range(2):
+            learning.reveal(session.response_token)
+            learning.answer(session.response_token, "know")
+            session.refresh_from_db()
+        self.run_together(lambda: learning.undo(session.response_token))
+        session.refresh_from_db()
+        self.word.refresh_from_db()
+        second.refresh_from_db()
+        self.assertEqual((self.word.stage, second.stage), (1, 0))
+        self.assertEqual(session.queue, [second.pk])
+        self.assertEqual(StudyReview.objects.count(), 1)
+        self.assertFalse(session.revealed)
+        self.assertIsNone(session.completed_at)
+
+
+    def test_concurrent_queue_refresh_appends_an_arrival_once(self):
+        session = learning.start_or_resume()
+        learning.reveal(session.response_token)
+        learning.answer(session.response_token, "know")
+        arrival = Word.objects.create(chunk="new queue arrival")
+        session_ids = self.run_together(lambda: learning.study_state()[0].pk)
+        session.refresh_from_db()
+        self.assertEqual(session_ids, [session.pk, session.pk])
+        self.assertEqual(session.queue, [arrival.pk])
+        self.assertEqual(StudySession.objects.count(), 1)

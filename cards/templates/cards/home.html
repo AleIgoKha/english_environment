@@ -1,36 +1,68 @@
 {% extends 'cards/base.html' %}
+{% load static %}
 {% block layout_class %}layout-home{% endblock %}
-{% block header_actions %}
-{% include 'cards/_navigation.html' %}
-{% endblock %}
+{% block header_actions %}{% include 'cards/_navigation.html' %}{% endblock %}
 {% block content %}
-<section class="welcome home-welcome">
-  <span class="eyebrow">ONE WORD AT A TIME</span>
-  <h1>Make room<br>for new words.</h1>
-  <p class="intro">Your everyday English starts here.</p>
-</section>
-<section class="practice-panel panel" aria-labelledby="practice-title">
-  <div class="section-heading"><h2 id="practice-title">A little practice</h2><span class="badge">{{ due_count }} due</span></div>
-  <p class="muted">{% if word_count %}Keep the words you want to make your own.{% else %}Your next chapter starts with your first word.{% endif %}</p>
-  <div class="stack">
-    <form method="post" action="{% url 'study-start' %}">
-      {% csrf_token %}
-      <button class="button button-primary" type="submit">{% if has_session %}Resume{% else %}Start{% endif %} <span aria-hidden="true">→</span></button>
-    </form>
-    <a class="button button-secondary" href="{% url 'word-add' %}"><span aria-hidden="true">+</span> Add word</a>
+<section class="learning-overview" aria-label="Learning overview">
+  <div class="progress-stats">
+    <a href="{% url 'home' %}?progress=to-learn" class="progress-stat"><span>To learn</span><strong>{{ to_learn_count }}</strong></a>
+    <a href="{% url 'home' %}?progress=practiced" class="progress-stat"><span>Practiced</span><strong>{{ practiced_count }}</strong></a>
+    <a href="{% url 'home' %}?progress=learned" class="progress-stat"><span>Learned</span><strong>{{ learned_count }}</strong></a>
   </div>
-  <p class="fine-print">{% if has_session %}Your session is saved. Pick up where you left off.{% else %}Review new and due words, a little at a time.{% endif %}</p>
+  <form method="post" action="{% url 'study-start' %}">
+    {% csrf_token %}
+    <button class="button button-primary start-learning" type="submit">{% if has_session %}Resume learning{% else %}Start learning{% endif %}</button>
+  </form>
 </section>
-<section class="words-section" aria-labelledby="words-title">
-  <div class="section-heading"><h2 id="words-title">Your words</h2><span class="word-count">{{ word_count }} word{{ word_count|pluralize }}</span></div>
-  {% if words %}
-    {% include 'cards/_word_list.html' %}
-  {% else %}
-  <div class="empty-state">
-    <div class="empty-cards" aria-hidden="true"><span></span><span>hello.</span></div>
-    <h3>A fresh start</h3>
-    <p>Add your first chunk to start<br>building your collection.</p>
-  </div>
-  {% endif %}
+<section class="cards-section" aria-label="My cards">
+  <details class="cards-browser" {% if cards_open %}open{% endif %}>
+    <summary class="cards-toggle"><span class="disclosure-arrow" aria-hidden="true"></span>My cards <span class="word-count">{{ total_count }}</span></summary>
+    <div class="cards-content">
+      <form method="get" action="{% url 'home' %}" class="card-filters" role="search">
+        <input type="hidden" name="cards" value="open">
+        <div class="filter-field">
+          <label for="progress">Progress</label>
+          <select id="progress" name="progress">
+            <option value="all" {% if progress == 'all' %}selected{% endif %}>All</option>
+            <option value="to-learn" {% if progress == 'to-learn' %}selected{% endif %}>To learn</option>
+            <option value="practiced" {% if progress == 'practiced' %}selected{% endif %}>Practiced</option>
+            <option value="learned" {% if progress == 'learned' %}selected{% endif %}>Learned</option>
+          </select>
+        </div>
+        <div class="filter-field">
+          <label for="word-search">Search</label>
+          <input id="word-search" type="search" name="q" value="{{ query }}" placeholder="Search words" maxlength="300">
+        </div>
+        <button class="import-cards" type="button" id="import-csv-button" aria-label="Import CSV" title="Import CSV"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 16V4m-4 4 4-4 4 4M5 15v5h14v-5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+      </form>
+      <form method="post" action="{% url 'word-import' %}" enctype="multipart/form-data" id="csv-import-form" hidden>
+        {% csrf_token %}
+        <input type="file" name="file" id="csv-import-file" accept=".csv,text/csv">
+      </form>
+      <p id="import-error" class="error" role="alert" hidden></p>
+      <p id="filter-error" class="error" role="alert" hidden></p>
+      <div id="card-results" aria-live="polite">
+      {% if words %}
+      <form method="post" action="{% url 'word-bulk' %}" id="card-selection">
+        {% csrf_token %}
+        {% include 'cards/_word_list.html' %}
+        <div class="selection-bar" aria-label="Selected card actions">
+          <div class="selection-heading"><output id="selection-count" aria-live="polite">Select cards</output><button type="button" class="selection-all">Select all</button><button type="button" class="selection-cancel" aria-label="Cancel selection">×</button></div>
+          <div class="selection-buttons">
+            <button type="submit" name="action" value="reset">Reset</button>
+            <button type="submit" name="action" value="delete" class="danger-link">Delete</button>
+          </div>
+        </div>
+      </form>
+      {% elif total_count %}
+        <p class="cards-empty">No words match this view. <a href="{% url 'home' %}?cards=open">Show all words</a></p>
+      {% else %}
+        <p class="cards-empty">No words yet. Use + to add your first word.</p>
+      {% endif %}
+      </div>
+    </div>
+  </details>
+  <a class="add-card" href="{% url 'word-add' %}" aria-label="Add word"><span aria-hidden="true">+</span></a>
 </section>
 {% endblock %}
+{% block scripts %}<script src="{% static 'cards/cards.js' %}{% if local_asset_version %}?v={{ local_asset_version }}{% endif %}" defer></script>{% endblock %}

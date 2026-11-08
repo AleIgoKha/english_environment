@@ -10,15 +10,15 @@ from django.utils import timezone
 
 from . import learning
 from .models import LearningSettings, StudySession, Word
-from .security import pin_version
-from .tests import TEST_HASH
+from .security import auth_version
+from .tests import GOOGLE_SETTINGS
 
 
-@override_settings(APP_PIN_HASH=TEST_HASH)
+@override_settings(**GOOGLE_SETTINGS)
 class LearningTests(TestCase):
     def setUp(self):
         session = self.client.session
-        session["pin_version"] = pin_version()
+        session.update({"auth_kind": "google", "google_email": "owner@example.test", "google_subject": "test-owner", "auth_version": auth_version()})
         session.save()
 
     def respond(self, choice="know"):
@@ -38,23 +38,23 @@ class LearningTests(TestCase):
         self.assertEqual(session.initial_stages, {str(older.pk): 3, str(newer.pk): 0})
         self.assertEqual(session.total_words, 2)
 
-    def test_empty_deck_completes_without_opening_an_active_session(self):
+    def test_empty_deck_waits_in_an_open_session(self):
         response = self.client.post(reverse("study-start"), follow=True)
-        self.assertContains(response, "All caught up.")
-        self.assertIsNone(learning.active_session())
-        self.assertIsNotNone(StudySession.objects.get().completed_at)
+        self.assertContains(response, "Well done!")
+        self.assertEqual(learning.active_session().queue, [])
+        self.assertIsNone(StudySession.objects.get().completed_at)
 
-    def test_start_resumes_existing_session_and_does_not_add_new_words_mid_session(self):
+    def test_start_resumes_and_appends_new_words_to_the_same_session(self):
         word = Word.objects.create(chunk="first")
         first = learning.start_or_resume()
-        Word.objects.create(chunk="added later")
+        added = Word.objects.create(chunk="added later")
         again = learning.start_or_resume()
         self.assertEqual(first.pk, again.pk)
-        self.assertEqual(again.queue, [word.pk])
+        self.assertEqual(again.queue, [word.pk, added.pk])
         self.assertEqual(StudySession.objects.count(), 1)
         self.respond()
         next_session = learning.start_or_resume()
-        self.assertNotEqual(next_session.pk, first.pk)
+        self.assertEqual(next_session.pk, first.pk)
         self.assertEqual(len(next_session.queue), 1)
 
     def test_reveal_is_required_and_is_saved_on_server(self):
@@ -91,7 +91,7 @@ class LearningTests(TestCase):
         session = self.respond()
         word.refresh_from_db()
         self.assertEqual(word.stage, 1)
-        self.assertIsNotNone(session.completed_at)
+        self.assertIsNone(session.completed_at)
         self.assertIsNone(word.archived_at)
         self.assertEqual(timezone.localtime(word.due_at).date(), timezone.localdate() + timedelta(days=1))
         self.assertEqual(learning.start_or_resume().queue, [])
@@ -112,8 +112,8 @@ class LearningTests(TestCase):
                     current = word.due_at
                 else:
                     self.assertEqual(word.archived_at, current)
-        self.assertNotContains(self.client.get(reverse("home")), "progress")
-        self.assertContains(self.client.get(reverse("archive")), "progress")
+        self.assertEqual(self.client.get(reverse("home"), {"progress": "practiced"}).context["word_count"], 0)
+        self.assertContains(self.client.get(reverse("home"), {"progress": "learned"}), "progress")
 
     def test_extended_schedule_and_stage_zero(self):
         current = datetime(2026, 11, 2, 12, tzinfo=datetime_timezone.utc)
@@ -145,7 +145,7 @@ class LearningTests(TestCase):
         self.respond("know")
         word.refresh_from_db()
         self.assertEqual(word.stage, 3)
-        self.assertIsNone(learning.active_session())
+        self.assertEqual(learning.active_session().queue, [])
 
     def test_repeated_dont_know_never_sets_back_more_than_two_stages(self):
         word = Word.objects.create(chunk="difficult", stage=4)
@@ -179,12 +179,12 @@ class LearningTests(TestCase):
             self.assertEqual(word.stage, 0)
             self.assertEqual(timezone.localtime(word.due_at).date(), timezone.localdate() + timedelta(days=1))
 
-    def test_retry_returns_after_three_other_answers(self):
+    def test_retry_returns_after_all_other_pending_cards(self):
         words = [Word.objects.create(chunk=f"word {index}") for index in range(5)]
         learning.start_or_resume()
         session = self.respond("repeat")
-        self.assertEqual(session.queue, [words[1].pk, words[2].pk, words[3].pk, words[0].pk, words[4].pk])
-        for index in [1, 2, 3]:
+        self.assertEqual(session.queue, [words[1].pk, words[2].pk, words[3].pk, words[4].pk, words[0].pk])
+        for index in [1, 2, 3, 4]:
             self.assertEqual(learning.active_session().queue[0], words[index].pk)
             self.respond()
         self.assertEqual(learning.active_session().queue[0], words[0].pk)
@@ -263,12 +263,12 @@ class LearningTests(TestCase):
         self.assertEqual(second.stage, 0)
         self.assertFalse(learning.active_session().revealed)
 
-    def test_deleting_last_pending_word_completes_session(self):
+    def test_deleting_last_pending_word_leaves_session_waiting(self):
         word = Word.objects.create(chunk="delete")
         learning.start_or_resume()
         self.client.post(reverse("word-delete", args=[word.pk]))
-        self.assertContains(self.client.get(reverse("study")), "Session complete.")
-        self.assertIsNone(learning.active_session())
+        self.assertContains(self.client.get(reverse("study")), "Well done!")
+        self.assertEqual(learning.active_session().queue, [])
 
     def test_only_one_open_session_allowed_by_database(self):
         Word.objects.create(chunk="one")
@@ -366,5 +366,42 @@ class LearningTests(TestCase):
         session = learning.active_session()
         self.assertRedirects(self.client.post(reverse("study-reveal"), {"response_token": session.response_token}), reverse("study"))
         self.assertRedirects(self.client.post(reverse("study-answer"), {"response_token": session.response_token, "answer": "know"}), reverse("study"))
-        self.assertContains(self.client.get(reverse("study")), "Session complete.")
-        self.assertContains(self.client.get(reverse("study")), "Your next review is")
+        self.assertContains(self.client.get(reverse("study")), "Well done!")
+        self.assertNotContains(self.client.get(reverse("study")), "Your next review is")
+
+
+    def test_reset_during_session_invalidates_old_answer_and_restarts_baseline(self):
+        word = Word.objects.create(chunk="reset me", stage=3)
+        session = learning.start_or_resume()
+        learning.reveal(session.response_token)
+        old_token = session.response_token
+        learning.answer(old_token, "repeat")
+        session.refresh_from_db()
+        learning.reveal(session.response_token)
+        stale_token = session.response_token
+        learning.reset_word(word.pk)
+        learning.answer(stale_token, "know")
+        word.refresh_from_db()
+        self.assertEqual(word.stage, 0)
+        session.refresh_from_db()
+        self.assertEqual(session.initial_stages[str(word.pk)], 0)
+        self.assertNotIn(str(word.pk), session.setbacks)
+        self.assertFalse(session.revealed)
+        learning.reveal(session.response_token)
+        learning.answer(session.response_token, "know")
+        word.refresh_from_db()
+        self.assertEqual(word.stage, 1)
+
+    def test_bulk_delete_prunes_queue_and_stale_answer_cannot_apply(self):
+        first = Word.objects.create(chunk="first")
+        second = Word.objects.create(chunk="second")
+        session = learning.start_or_resume()
+        learning.reveal(session.response_token)
+        old_token = session.response_token
+        self.client.post(reverse("word-bulk"), {"word_ids": [first.pk], "action": "delete", "confirmed": "yes"})
+        session.refresh_from_db()
+        self.assertEqual(session.queue, [second.pk])
+        self.assertNotEqual(session.response_token, old_token)
+        learning.answer(old_token, "know")
+        second.refresh_from_db()
+        self.assertEqual(second.stage, 0)

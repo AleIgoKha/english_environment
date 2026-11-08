@@ -1,10 +1,10 @@
-# Word by word
+# Cardy
 
-A small, private English flashcard app with PIN login, responsive purple layout, word management, archive, persistent study sessions, and repetition settings. Production setup uses PostgreSQL, Gunicorn, WhiteNoise, and Railway's native GitHub deployment. See [DEPLOYMENT.md](DEPLOYMENT.md) for setup, security, verification, recovery, and iPhone Home Screen installation.
+A private English flashcard app with owner-only Google sign-in, a purple desktop and iPhone layout, word management, progress filters, and persistent spaced-repetition sessions. Django renders the pages; SQLite supports local development and PostgreSQL stores production data on Railway.
 
 ## Local setup (Windows PowerShell)
 
-Prerequisite: Python 3.11 installed through the Python launcher (`py`). Run from this repository. Do not paste secrets into chat or commit them.
+Prerequisite: Python 3.11 installed through the Python launcher (`py`). Run from this repository. Never paste secrets into chat or commit them.
 
 ```powershell
 Set-Location 'C:\Users\Alexei Harcenco\Documents\Repositories\english_environment'
@@ -15,71 +15,88 @@ py -3.11 -m venv .venv
 .\.venv\Scripts\python.exe manage.py runserver
 ```
 
-The setup script privately prompts for a four-digit PIN and writes only its salted hash and a random Django secret into `.env`. Existing `.env` files are never overwritten. `.env` and the SQLite database are ignored by Git. Open http://127.0.0.1:8000/ and enter your chosen PIN. No activation of the virtual environment is required with these commands.
+The setup script creates an ignored `.env` with a random Django secret and enables **Continue as test user**, matching Budget's local testing flow. Existing `.env` files are never overwritten. Google credentials are optional for local test access.
 
-## Verify this checkpoint
+Open the URL saved in `LOCAL_DEV_URL` in your ignored `.env` and choose **Continue as test user**. For desktop and iPhone testing on the same Wi-Fi, use `LOCAL_DEV_ADDRESS=0.0.0.0:8000`, save the computer's Wi-Fi URL in `LOCAL_DEV_URL`, add its IP to `DJANGO_ALLOWED_HOSTS`, and set `LOCAL_TEST_NETWORK` to the private Wi-Fi subnet. The wildcard address is only for binding; open the computer's actual Wi-Fi address on the phone. Keep the computer running. Its IP may change unless reserved in the router.
 
-Prerequisite: the virtual environment and dependencies above. Tests use disposable settings and an in-memory SQLite database; they do not need your `.env` or PIN.
+Test mode uses a separate `db.local-test.sqlite3` deck; the original `db.sqlite3` is preserved. All local databases and `.env` are ignored by Git and excluded from the deployment image. Test sign-in requires debug mode, explicit `DJANGO_LOCAL_TEST_LOGIN=true`, a local database, a loopback or configured private Wi-Fi connection, and no Railway environment. Anyone on that configured subnet can use the local test deck while enabled. Disabling test access revokes existing test sessions.
 
-```powershell
-Set-Location 'C:\Users\Alexei Harcenco\Documents\Repositories\english_environment'
-.\.venv\Scripts\python.exe manage.py test --settings=config.test_settings
-.\.venv\Scripts\python.exe manage.py makemigrations --check --dry-run --settings=config.test_settings
-```
+To inspect the original local deck, set `DJANGO_LOCAL_TEST_LOGIN=false`, configure Google sign-in, run migrations, and restart the server. When test mode is enabled, Google login also uses the test database.
 
-Manually verify that `/` redirects to login, the correct PIN opens the home screen, refresh remembers your login, and Log out returns to login. Five wrong PIN submissions trigger a 15-minute lockout even with a new browser session. The lockout is global for this single-user app, so an outsider can temporarily block your own login too. A four-digit PIN has limited guessing resistance even with these controls.
+## Google sign-in setup
 
-Check the layout at phone and desktop widths. Below 900px, pages use a compact single column with touch-friendly controls and iPhone safe-area padding. On desktop, the home page places practice controls beside the word list, and login places the welcome text beside the PIN form. A web app manifest and 180/192/512px icons support Home Screen installation. Real iPhone visual acceptance remains a device-side check.
+Create a **Web application** OAuth client in Google Cloud Console → Google Auth Platform → Clients. Configure the app audience; in Testing mode, add your permitted Google email as a test user. The app requests only `openid email`.
 
-### Word management
+Add these exact **Authorized redirect URIs**, including trailing slashes. These belong under redirect URIs, not JavaScript origins:
 
-After updating an existing local installation, run the following with the existing virtual environment and `.env` configured. This adds a word table without changing your PIN or login data:
+- `http://127.0.0.1:8000/auth/google/callback/`
+- `https://english-environment-production.up.railway.app/auth/google/callback/`
 
-```powershell
-Set-Location 'C:\Users\Alexei Harcenco\Documents\Repositories\english_environment'
-.\.venv\Scripts\python.exe manage.py migrate
-```
+Store `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and `ALLOWED_GOOGLE_EMAIL` privately in `.env` for local Google testing and in Railway variables before publishing this update. Only the configured verified email can access the shared deck. Never paste client secrets into chat. See [Google's OpenID Connect guide](https://developers.google.com/identity/openid-connect/openid-connect).
 
-Refresh the home page and choose **Add word**. Only Chunk is required; Meaning and Example can be blank. Limits are 300 characters for Chunk, 2,000 for Meaning, and 4,000 for Example. Word lists show the saved content as escaped text. Use Edit to update a word or open its deletion confirmation; nothing is deleted until you confirm. Cancel keeps the saved word unchanged.
+Configure the Google variables before publishing. Production Google access is restricted to the configured owner, and local test access is always disabled on Railway.
 
-New words start at stage zero and are due immediately. Editing changes content only, preserving learning state. The due count reflects new and due active words.
+## Learning rules
 
-**Archive** contains only learned words. Words move there automatically on a successful review when they reach the target in Settings. Restoring a word resets it to stage zero and makes it due immediately. A repeated restore request cannot reset an already-active word. Archived words can also be edited or deleted.
+- Chunk is required; Meaning and Example are optional. Open My cards to search or filter by All, To learn, Practiced, or Learned. The three-dot menu offers Reset, Edit, Select, and Delete. Reset returns a word to To learn, due immediately; Reset and Delete ask for confirmation. Select enables checkboxes and bulk Reset / Delete with confirmation.
+- Start opens one ongoing session. New and due words are appended to the end; an empty queue waits without ending the session or reviewing future cards early. The study screen checks for arrivals every five seconds while visible, and progress resumes after reopening.
+- Reveal the answer, then choose Know, Repeat, or Don't know.
+- Know advances a stage unless there was an earlier setback in the current review round. The default fifth success marks a word Learned.
+- Repeat reduces the stage at the start of the current review round by one; Don't know reduces it by two. Setbacks use the largest reduction, never stack, and never go below zero.
+- A setback moves the card to the very end of the queue. A later Know finishes without advancing the reduced stage.
+- Review gaps are 1, 3, 7, 14, 30, 60, 120, 240, and 365 days. Stage zero retries are due tomorrow. Calendar days use Europe/Chisinau; timestamps are stored in UTC.
+- Undo below the card reverses answers one at a time, including the last answer while waiting for new cards. The previous card returns with its answer hidden, with its exact learning state and queue restored. Reveal the answer again before choosing a response. Undo history survives reopening the app and stays available in the ongoing session. Cards that arrived later remain at the end when undoing. Resetting or deleting cards clears the history so Undo cannot overwrite those deck changes. Only answers made after the Undo update are available to undo.
+- Settings allow 1–10 successes. Changes affect subsequent review decisions without immediately changing existing review dates or Learned status.
+- To learn counts active words due now or still queued for practice; Practiced counts active words waiting for their future review date; Learned counts completed words. The list filters and each card status use those same readiness rules. Reset restarts progress without removing the saved text. Responses are atomic and duplicate answer taps cannot apply twice. Old archive bookmarks redirect to the Learned filter.
 
-For this checkpoint, manually verify adding a Chunk-only word, adding all three fields, editing and clearing optional fields, cancelling a deletion, and confirming deletion of a test word. Archive filtering/restoration are covered by automated tests using disposable learned words; no sample words are inserted into your actual database. Desktop and iPhone visual review remains a manual check.
+## Import words from CSV
 
-### Study sessions and settings
+Open **My cards**, then tap the round upload icon beside Search. Choose a UTF-8 `.csv`, review the preview, then confirm the import. Uploading alone does not add words.
 
-For an existing installation, run `manage.py migrate` from the repository with your configured virtual environment, as shown above, then restart the development server. The migration adds learning settings (default target: five) and session storage; existing words, PIN configuration, and login sessions are preserved.
+Supported headers are `Chunk,Meaning,Example` or DuoCards' `front,back,hint,publishedAt`. Only Chunk/front is required; published dates are ignored. Quoted commas and multiline examples are supported. Use no more than 1,000 rows or 2 MB per upload.
 
-- **Start** builds a queue of new and due words, oldest due first. **Resume** continues the existing queue. Newly added words join your next session, rather than changing an ongoing one.
-- A card shows Chunk first. **Reveal answer** shows Meaning and Example, followed by **Know**, **Repeat**, and **Don't know**. Chunk-only cards can also be reviewed.
-- **Know** advances a word one stage when it has had no setback this session, then removes it from today's queue. With the default target of five, gaps are 1, 3, 7, and 14 calendar days; the fifth success archives it.
-- **Repeat** applies a one-stage setback; **Don't know** applies two. Both reference the stage saved at session start. Repeating either action cannot stack setbacks, and combining them produces at most two stages total. Stage zero is the minimum.
-- Either setback puts the word after three other answers, or at the end of a shorter queue. A later **Know** finishes practice without recovering a stage. The next review is scheduled from the reduced stage; stage zero retries are due tomorrow.
-- Review dates fall at midnight in Europe/Chisinau; timestamps are stored in UTC. The additional gaps for larger targets are 30, 60, 120, 240, and 365 days. This is a simple fixed stage schedule, not a personalized retention estimate.
-- **Settings** accepts a target of 1–10. Changes apply to subsequent answers, including those in an ongoing session. They do not immediately archive existing words, rewrite their due dates, or restore archived words.
-- **Pause and return home**, closing the browser, logging out, or restarting the server leaves the study queue and setbacks saved. Login and Resume pick up the same session. The queue closes when every remaining word is finished or deleted.
+New words start in **To learn**, due immediately. Every CSV row is imported, including duplicates within the file or matching words already in the deck. Existing text and learning progress are preserved. Reconfirming the same preview does not import it twice.
 
-Session changes and word progress are saved in one database transaction. A per-card response token rejects duplicate and stale submissions, including double taps when only one word is left. An answer cannot be recorded before revealing the card. A shared database lock and a uniqueness constraint prevent simultaneous Start requests from creating separate open sessions. Functional tests pass on PostgreSQL, including real concurrent Start and duplicate-answer requests.
-
-To review this checkpoint manually, add a test word, Start, reveal it, pause, and Resume. Try Repeat several times, then Know; it should remain active and be due on a later day. For a quick archive check, set the target to 1, add another test word, and answer Know; it should move to Archive. Restore it to the deck, and set your preferred target again. These actions change only words you choose to practice; tests never seed your real deck.
+Previews are private to the authenticated browser session, expire after 24 hours, and store parsed text in the database rather than an uploaded file. Parsed preview rows are cleared after import, and expired previews are cleaned up on the next valid upload. Repeated confirmation cannot add a batch twice. No private CSV exports belong in Git.
 
 ## Configuration and security
 
 | Variable | Purpose |
 | --- | --- |
-| `DJANGO_SECRET_KEY` | Random secret, mandatory; never commit it. |
-| `APP_PIN_HASH` | Django password hash of the four-digit PIN. Missing/invalid configuration disables login. |
-| `DJANGO_DEBUG` | `true` only for local development; defaults to `false`. |
-| `DJANGO_ALLOWED_HOSTS` | Comma-separated hosts without schemes. |
-| `DJANGO_CSRF_TRUSTED_ORIGINS` | Comma-separated HTTPS origins, where needed for deployment. |
-| `DATABASE_URL` | PostgreSQL connection URL, mandatory when debug is disabled. Railway uses a reference to the dedicated database service. |
+| `DJANGO_SECRET_KEY` | Random secret; mandatory, never commit it. |
+| `GOOGLE_CLIENT_ID` | Google Web application OAuth client ID. |
+| `GOOGLE_CLIENT_SECRET` | Google OAuth client secret. |
+| `ALLOWED_GOOGLE_EMAIL` | Permitted verified owner email. |
+| `DJANGO_DEBUG` | `true` locally only; defaults to `false`. |
+| `DJANGO_LOCAL_TEST_LOGIN` | Explicit local test access; always `false` on Railway. |
+| `LOCAL_DEV_ADDRESS` | Local server address; defaults to `127.0.0.1:8000`. |
+| `DJANGO_ALLOWED_HOSTS` | Comma-separated hostnames without schemes. |
+| `DJANGO_CSRF_TRUSTED_ORIGINS` | Comma-separated HTTPS origins where needed. |
+| `DATABASE_URL` | PostgreSQL URL; mandatory in production. |
 
-Production defaults enforce HTTPS and secure cookies, trust Railway's forwarded HTTPS header, require PostgreSQL, and serve collected static assets through WhiteNoise. Railway holds production secrets in environment variables; the local `.env` is excluded from the Docker image and Git. The public `/health/` readiness endpoint returns only a generic status, with no private content.
+Authlib implements OpenID Connect with authorization codes, PKCE, state and nonce validation. Google tokens are verified and discarded. Sessions last 30 days. Logout clears the current session; changing Google credentials or the allowed email revokes remembered access. Old PIN sessions no longer authenticate. Protected responses use `Cache-Control: no-store`.
 
-PIN verification is server-side. Sessions last 30 days; logging out deletes the current session, and changing `APP_PIN_HASH` invalidates existing logins. Failed attempts and lockout expiry live in the database. PIN fields are excluded from Django error reports, and submitted PINs are not logged or echoed in responses. Protected responses use `Cache-Control: no-store`.
+Production requires HTTPS, CSRF protection, secure cookies, debug disabled, and PostgreSQL. Secrets belong in Railway variables. Callback query strings are excluded from production access logs and redacted in Django development logs. `/health/` returns only a generic status.
 
-To change the local PIN, stop the development server, delete only the ignored `.env` file, and rerun `scripts/setup_local.py`. This also rotates the local Django secret and invalidates local sessions; words in the database will be preserved.
+## Verification
 
-The project uses Django templates (HTML rendered on the server), SQLite for local development, and PostgreSQL in production. No frontend build system is needed. Publication and live verification status are recorded in [DEPLOYMENT.md](DEPLOYMENT.md).
+Prerequisites: installed virtual environment and dependencies. Tests use disposable credentials and databases.
+
+```powershell
+Set-Location 'C:\Users\Alexei Harcenco\Documents\Repositories\english_environment'
+.\.venv\Scripts\python.exe manage.py test --settings=config.test_settings
+.\.venv\Scripts\python.exe scripts/check_production.py
+```
+
+For PostgreSQL verification, install PostgreSQL command-line tools on PATH, then run from this repository:
+
+```powershell
+Set-Location 'C:\Users\Alexei Harcenco\Documents\Repositories\english_environment'
+.\scripts\test_postgres.ps1
+```
+
+The script creates a disposable local cluster, runs the suite, and stops it. It never uses Railway's database.
+
+Manually check login, Settings → Logout, word editing, study resumption, and the desktop layout. On iPhone, open the HTTPS app in Safari → Share → Add to Home Screen. Confirm standalone display, safe areas and remembered Google login on the device. Version one requires internet access.
+
+See [DEPLOYMENT.md](DEPLOYMENT.md) for GitHub-to-Railway setup, migrations, static assets, recovery, and the last verified production state.

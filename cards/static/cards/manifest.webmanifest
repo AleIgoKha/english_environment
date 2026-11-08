@@ -1,7 +1,7 @@
 {
   "id": "/",
-  "name": "Word by word",
-  "short_name": "Words",
+  "name": "Cardy",
+  "short_name": "Cardy",
   "description": "Your private English word collection and daily practice.",
   "lang": "en",
   "start_url": "/",

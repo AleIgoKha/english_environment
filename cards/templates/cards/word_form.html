@@ -1,12 +1,17 @@
 {% extends 'cards/base.html' %}
-{% block title %}{% if word %}Edit word{% else %}Add word{% endif %} · Word by word{% endblock %}
+{% block title %}{% if word %}Edit word{% else %}Add word{% endif %} · Cardy{% endblock %}
 {% block layout_class %}layout-form{% endblock %}
 {% block header_actions %}{% include 'cards/_navigation.html' %}{% endblock %}
 {% block content %}
 <section class="page-heading">
-  <span class="eyebrow">YOUR GROWING COLLECTION</span>
-  <h1>{% if word %}Edit word{% else %}A new word.{% endif %}</h1>
-  <p class="intro">A single word or a useful phrase. Make it yours.</p>
+  {% if word %}
+  <div class="section-title-row">
+    <a class="back-arrow" href="{% url 'home' %}?{% if word.archived_at %}progress=learned{% else %}cards=open{% endif %}" aria-label="Back to My cards"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M15 5l-7 7 7 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></a>
+    <h1>Edit word</h1>
+  </div>
+  {% else %}
+  <h1>A new word.</h1>
+  {% endif %}
 </section>
 <section class="panel form-panel" aria-label="Word details">
   <form method="post" class="stack word-form">
@@ -14,17 +19,17 @@
     {{ form.non_field_errors }}
     {% for field in form %}
     <div class="form-field">
-      <label for="{{ field.id_for_label }}">{{ field.label }}{% if not field.field.required %} <span class="optional-label">(optional)</span>{% endif %}</label>
+      <label for="{{ field.id_for_label }}">{% if field.name == 'chunk' %}Chunk <span class="optional-label">(a word or phrase you want to learn)</span>{% else %}{{ field.label }}{% endif %}{% if not field.field.required %} <span class="optional-label">(optional)</span>{% endif %}</label>
       {{ field }}
       {{ field.errors }}
       {% if field.help_text %}<p class="field-help" id="{{ field.auto_id }}_helptext">{{ field.help_text }}</p>{% endif %}
     </div>
     {% endfor %}
-    <div class="form-actions">
+    <div class="form-actions{% if word %} word-edit-actions{% endif %}">
       <button class="button button-primary" type="submit">{% if word %}Save changes{% else %}Add word{% endif %}</button>
-      <a class="button button-secondary" href="{% if word.archived_at %}{% url 'archive' %}{% else %}{% url 'home' %}{% endif %}">Cancel</a>
+      {% if not word %}<a class="button button-secondary" href="{% url 'home' %}">Cancel</a>{% endif %}
+      {% if word %}<a class="button button-danger" href="{% url 'word-delete' word.pk %}">Delete word</a>{% endif %}
     </div>
   </form>
-  {% if word %}<div class="delete-link"><a href="{% url 'word-delete' word.pk %}">Delete word</a></div>{% endif %}
 </section>
 {% endblock %}

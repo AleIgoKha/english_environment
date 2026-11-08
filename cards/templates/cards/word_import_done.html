@@ -1,0 +1,11 @@
+{% extends 'cards/base.html' %}
+{% block title %}Import complete · Cardy{% endblock %}
+{% block layout_class %}layout-form{% endblock %}
+{% block header_actions %}{% include 'cards/_navigation.html' %}{% endblock %}
+{% block content %}
+<section class="page-heading"><h1>Import complete</h1></section>
+<section class="panel form-panel" aria-label="Import result">
+  <p class="success-note" role="status">Added {{ batch.added_count }} word{{ batch.added_count|pluralize }}.</p>
+  <a class="button button-primary" href="{% url 'home' %}?cards=open">OK</a>
+</section>
+{% endblock %}

@@ -35,16 +35,21 @@ Store all values in the app service's Railway environment variables:
 | --- | --- |
 | `DATABASE_URL` | Reference `${{Postgres.DATABASE_URL}}`, using Railway's private network. |
 | `DJANGO_SECRET_KEY` | A fresh, random production secret. |
-| `APP_PIN_HASH` | The existing local PIN's Django PBKDF2 hash. Never a plaintext PIN. |
+| `GOOGLE_CLIENT_ID` | Google Web application OAuth client ID. |
+| `GOOGLE_CLIENT_SECRET` | Google OAuth client secret, stored privately. |
+| `ALLOWED_GOOGLE_EMAIL` | Owner's permitted verified Google email. |
+| `DJANGO_LOCAL_TEST_LOGIN` | `false`; production cannot use local test access. |
 | `DJANGO_DEBUG` | `false` |
 | `DJANGO_ALLOWED_HOSTS` | `healthcheck.railway.app`; Railway's generated public domain is also added automatically. |
 | `PORT` | `8000` |
 
 `RAILWAY_PUBLIC_DOMAIN` and `RAILWAY_ENVIRONMENT_ID` are supplied by Railway. The app derives its public allowed host and trusted HTTPS origin from the domain. For a custom domain, add its hostname to `DJANGO_ALLOWED_HOSTS` and its full HTTPS origin to `DJANGO_CSRF_TRUSTED_ORIGINS`.
 
-`scripts/configure_railway.py` sends variables through CLI stdin, hides captured command output, copies only the PIN hash from the ignored local `.env`, and generates a separate production Django secret. It never reads or transfers local word data. Run it only for initial setup: rerunning it rotates the production Django secret and logs out existing devices.
+`scripts/configure_railway.py` sends variables through CLI stdin, hides captured command output, copies only Google configuration from the ignored local `.env`, and generates a separate production Django secret. It never reads or transfers local word data. Run it only for initial setup: rerunning it rotates the production Django secret and logs out existing devices.
 
-To change the PIN later, generate a Django PBKDF2 hash privately and replace only `APP_PIN_HASH` in Railway. Redeploy to apply it. Existing remembered logins are invalidated automatically; words and saved study sessions remain. Never paste secret values into chat, issue bodies, or Git commands.
+Before publishing the Google sign-in update, configure the Google client and exact callback URLs following [README.md](README.md#google-sign-in-setup). Add the three Google variables to the existing app service without rotating its Django secret; keep `DJANGO_LOCAL_TEST_LOGIN=false`. Remove obsolete `APP_PIN_HASH` after rollout. Never copy `.env` or either local SQLite database into Railway. Changing Google credentials or the allowed email invalidates remembered access; words and study sessions remain.
+
+**Cardy release:** Google variables are configured privately on the app service using the existing Budget client; the owner confirmed adding Cardy's production callback URI. Local test sign-in is disabled in production. Verify Google sign-in with the owner after rollout. The historical production checks below refer to the previous PIN release.
 
 ## Verification
 
@@ -59,13 +64,13 @@ pwsh -NoProfile -File scripts/test_postgres.ps1
 
 Production checks use ephemeral test configuration, not real credentials. PostgreSQL tests create their own localhost-only cluster on port 55434, run migrations and tests, destroy the test database, and stop the cluster. Cluster files stay ignored under `.local/`. Never point test settings at production.
 
-After each deployment, verify the Railway status is successful, `/health/` returns only `{"status":"ok"}`, login loads over HTTPS, anonymous private routes redirect to login, and CSS/icons/manifest load. A live PIN login and study-flow check should use the owner's device. Railway's deployment health check is a release gate, not continuous uptime monitoring.
+After each deployment, verify the Railway status is successful, `/health/` returns only `{"status":"ok"}`, login loads over HTTPS, anonymous private routes redirect to login, and CSS/icons/manifest load. A live Google sign-in and study-flow check should use the owner's device. Railway's deployment health check is a release gate, not continuous uptime monitoring.
 
 To check persistence, create a disposable test word after login, redeploy the same code, and confirm the word and any unfinished study session remain. Delete only the test word afterward. Keep this manual verification separate from local automated database tests.
 
 ## iPhone 16 Pro installation
 
-Open the production HTTPS URL in Safari, log in, and choose **Share → Add to Home Screen**. Enable **Open as Web App** if shown, then tap Add. Launch the new icon and confirm standalone display, safe-area spacing, word forms, Reveal, response buttons, and remembered login. Home Screen login storage can differ from Safari, so a separate PIN login may be needed. Offline studying is not supported.
+Open the production HTTPS URL in Safari, log in, and choose **Share → Add to Home Screen**. Enable **Open as Web App** if shown, then tap Add. Launch the new icon and confirm standalone display, safe-area spacing, word forms, Reveal, response buttons, and remembered login. Home Screen login storage can differ from Safari, so a separate Google sign-in may be needed. Offline studying is not supported.
 
 ## Troubleshooting and recovery
 
@@ -73,12 +78,21 @@ Open the production HTTPS URL in Safari, log in, and choose **Share → Add to H
 - **Deployment readiness fails:** check deployment logs for missing variables or migration errors. `/health/` intentionally hides database details. Do not print the variable list or database URL into shared logs.
 - **HTTPS redirect loop / CSRF error:** verify the generated domain variables, trusted origins, and Railway proxy settings. Do not disable CSRF or secure cookies to bypass the error.
 - **Static files missing:** confirm startup completed `collectstatic` and WhiteNoise loaded its manifest. The pre-deploy container is separate; static files must be collected in the running app container.
-- **PIN locked out:** wait 15 minutes after five consecutive failures. Attempts during the lock do not extend it.
+- **Google sign-in fails:** check exact authorized redirect URIs, the permitted verified owner email, and Testing audience membership. Never print token responses or client secrets.
 - **Failed release:** use Railway's prior successful deployment to roll back the app. Review schema compatibility before rolling back after a migration; application rollback does not roll back the database.
 
 Backup availability depends on the Railway workspace plan. Confirm supported PostgreSQL volume backup options in Railway. Keep encrypted database exports outside this repository if using manual backups; never commit a backup. No plan upgrade or backup schedule is implied by this deployment.
 
-## Validation status
+## Cardy release readiness
+
+- 130 tests passed on isolated PostgreSQL, including ongoing queues, multiple-step Undo, atomic import, authorization, and concurrent requests.
+- Production security checks, static collection, dependency checks, and migration consistency pass.
+- Desktop and phone-width browser checks cover layout, live filters, selection, direct CSV upload, ongoing sessions, and Undo.
+- Existing production words remain in the dedicated database. No local test deck or export is included in the release.
+- Migrations retire the PIN guard from Django state while retaining its table for rollout compatibility, and add CSV preview and Undo history tables. Existing words, stages, settings, and queues are preserved.
+- After automatic deployment, verify public readiness, owner-only Google sign-in initiation, anonymous-route protection, and static assets. Real Google sign-in and iPhone acceptance remain owner checks.
+
+## Previous production verification (PIN release)
 
 - Production settings check and static collection: passed locally.
 - Full final suite: 78 tests passed on isolated PostgreSQL, including real concurrent Start/duplicate-answer requests, installable manifest assets, and deployment-profile safety checks.

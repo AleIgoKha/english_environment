@@ -4,7 +4,6 @@ from pathlib import Path
 import secrets
 import subprocess
 
-from django.contrib.auth.hashers import PBKDF2PasswordHasher
 from dotenv import dotenv_values
 
 
@@ -18,17 +17,14 @@ def main():
     arguments = parser.parse_args()
     root = Path(__file__).resolve().parent.parent
     local = dotenv_values(root / ".env")
-    pin_hash = local.get("APP_PIN_HASH", "")
-    try:
-        decoded = PBKDF2PasswordHasher().decode(pin_hash)
-        if not (decoded["salt"] and decoded["hash"] and decoded["iterations"] > 0):
-            raise ValueError
-    except (ValueError, TypeError, KeyError, AttributeError):
-        raise SystemExit("Configure a local PIN with scripts/setup_local.py first. No credentials were sent.")
-    # This configures a fresh production secret and preserves the chosen PIN.
+    google_keys = ("GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "ALLOWED_GOOGLE_EMAIL")
+    if not all(local.get(key) for key in google_keys):
+        raise SystemExit("Set Google credentials and allowed email in local .env first. Nothing was sent.")
+    # Initial setup only: this rotates the production Django secret.
     values = {
         "DJANGO_SECRET_KEY": secrets.token_urlsafe(64),
-        "APP_PIN_HASH": pin_hash,
+        **{key: local[key] for key in google_keys},
+        "DJANGO_LOCAL_TEST_LOGIN": "false",
         "DJANGO_DEBUG": "false",
         "DJANGO_ALLOWED_HOSTS": "healthcheck.railway.app",
         "DATABASE_URL": "${{" + arguments.database_service + ".DATABASE_URL}}",

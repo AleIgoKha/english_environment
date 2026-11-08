@@ -1,37 +1,42 @@
 {% extends 'cards/base.html' %}
-{% block title %}Practice · Word by word{% endblock %}
+{% load static %}
+{% block title %}Practice · Cardy{% endblock %}
 {% block layout_class %}layout-form layout-study{% endblock %}
 {% block header_actions %}{% include 'cards/_navigation.html' %}{% endblock %}
 {% block content %}
-<section class="page-heading">
-  <span class="eyebrow">A LITTLE PRACTICE</span>
-  <div class="section-heading"><h1>One word closer.</h1><span class="badge">{{ remaining }} left</span></div>
-  <p class="intro">Think of the meaning, then reveal the answer.</p>
-</section>
-<section class="panel study-card" aria-labelledby="study-chunk">
-  <span class="eyebrow">CHUNK</span>
-  <h2 id="study-chunk" class="study-chunk">{{ word.chunk }}</h2>
+<div id="study-live" data-status-url="{% url 'study-status' %}" data-token="{{ study_session.response_token }}" data-revealed="{{ study_session.revealed|yesno:'true,false' }}" data-can-undo="{{ can_undo|yesno:'true,false' }}">
+<div class="study-progress">
+  <a class="back-arrow" href="{% url 'home' %}" aria-label="Pause and return home"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M15 5l-7 7 7 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></a>
+  <span class="badge">{{ remaining }} left</span>
+</div>
+<section class="study-card-group" aria-labelledby="study-chunk">
+  <div class="panel study-card has-footer">
+    <h2 id="study-chunk" class="study-chunk">{{ word.chunk }}</h2>
+    {% if study_session.revealed %}
+      <div class="study-answer">
+        {% if word.meaning %}<h3>Meaning</h3><p>{{ word.meaning|linebreaksbr }}</p>{% endif %}
+        {% if word.example %}<h3>Example</h3><blockquote class="word-example">{{ word.example|linebreaksbr }}</blockquote>{% endif %}
+        {% if not word.meaning and not word.example %}<p class="muted">No meaning or example added. Check against your own answer.</p>{% endif %}
+      </div>
+    {% endif %}
+  </div>
   {% if study_session.revealed %}
-    <div class="study-answer">
-      {% if word.meaning %}<h3>Meaning</h3><p>{{ word.meaning|linebreaksbr }}</p>{% endif %}
-      {% if word.example %}<h3>Example</h3><blockquote class="word-example">{{ word.example|linebreaksbr }}</blockquote>{% endif %}
-      {% if not word.meaning and not word.example %}<p class="muted">No meaning or example added. Check against your own answer.</p>{% endif %}
-    </div>
-    <form method="post" action="{% url 'study-answer' %}" class="study-actions">
+    <form method="post" action="{% url 'study-answer' %}" class="study-actions study-card-footer">
       {% csrf_token %}
       <input type="hidden" name="response_token" value="{{ study_session.response_token }}">
-      <button class="button button-primary" name="answer" value="know" type="submit">Know</button>
+      <button class="button button-danger" name="answer" value="dont_know" type="submit">Don't know</button>
       <button class="button button-secondary" name="answer" value="repeat" type="submit">Repeat</button>
-      <button class="button button-secondary" name="answer" value="dont_know" type="submit">Don't know</button>
+      <button class="button button-primary" name="answer" value="know" type="submit">Know</button>
     </form>
-    <p class="fine-print">Repeat and Don't know bring this word back later in this session. Know finishes its practice for today.</p>
   {% else %}
-    <form method="post" action="{% url 'study-reveal' %}">
+    <form method="post" action="{% url 'study-reveal' %}" class="study-actions study-card-footer study-reveal-footer">
       {% csrf_token %}
       <input type="hidden" name="response_token" value="{{ study_session.response_token }}">
       <button class="button button-primary" type="submit">Reveal answer</button>
     </form>
   {% endif %}
 </section>
-<p class="pause-note"><a class="nav-link" href="{% url 'home' %}">Pause and return home</a><br>Your session is saved automatically.</p>
+{% include 'cards/_study_undo.html' with undo_session=study_session %}
+</div>
 {% endblock %}
+{% block scripts %}<script src="{% static 'cards/study.js' %}{% if local_asset_version %}?v={{ local_asset_version }}{% endif %}" defer></script>{% endblock %}

@@ -1,0 +1,7 @@
+{% if can_undo %}
+<form method="post" action="{% url 'study-undo' %}" class="study-undo">
+  {% csrf_token %}
+  <input type="hidden" name="response_token" value="{{ undo_session.response_token }}">
+  <button class="button button-secondary" type="submit">Undo</button>
+</form>
+{% endif %}

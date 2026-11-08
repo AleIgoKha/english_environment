@@ -1,0 +1,25 @@
+{% extends 'cards/base.html' %}
+{% block title %}Confirm {{ action }} · Cardy{% endblock %}
+{% block layout_class %}layout-form{% endblock %}
+{% block header_actions %}{% include 'cards/_navigation.html' %}{% endblock %}
+{% block content %}
+<section class="page-heading">
+  {% if words|length > 1 %}
+    <h1>{% if action == 'delete' %}Delete{% else %}Reset{% endif %} {{ words|length }} cards?</h1>
+  {% else %}
+    <h1>{% if action == 'delete' %}Delete{% else %}Reset{% endif %} {{ words|length }} word{{ words|length|pluralize }}?</h1>
+    <p class="intro">{% if action == 'delete' %}These words and their learning progress will be permanently removed.{% else %}These words will return to To learn, due immediately. Their text will stay saved.{% endif %}</p>
+  {% endif %}
+</section>
+<section class="panel form-panel" aria-label="Confirm selected card action">
+  {% if words|length == 1 %}<ul class="confirmation-words">{% for word in words %}<li>{{ word.chunk }}</li>{% endfor %}</ul>{% endif %}
+  <form method="post" action="{% url 'word-bulk' %}" class="form-actions">
+    {% csrf_token %}
+    <input type="hidden" name="action" value="{{ action }}">
+    <input type="hidden" name="confirmed" value="yes">
+    {% for word in words %}<input type="hidden" name="word_ids" value="{{ word.pk }}">{% endfor %}
+    <button class="button {% if action == 'delete' %}button-danger{% else %}button-primary{% endif %}" type="submit">{% if action == 'delete' %}Delete{% else %}Reset{% endif %}{% if words|length == 1 %} 1 word{% endif %}</button>
+    <a class="button button-secondary" href="{% url 'home' %}?cards=open">Cancel</a>
+  </form>
+</section>
+{% endblock %}

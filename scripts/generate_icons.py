@@ -1,4 +1,4 @@
-"""Render the existing card-and-w icon as PNGs, using only Python's stdlib."""
+"""Render the Cardy card-and-C icon as PNGs, using only Python's stdlib."""
 import math
 from pathlib import Path
 import struct
@@ -30,8 +30,10 @@ def pixel(x, y):
         color = PALE
     if rounded_rect(x, y, 53, 42, 89, 101, 14, math.radians(7)):
         color = WHITE
-    points = [(70, 83), (79, 107), (89, 87), (99, 107), (108, 83)]
-    if any(line_distance(x, y, first, second) <= 3.5 for first, second in zip(points, points[1:])):
+    dx, dy = x - 97, y - 92
+    ring = abs(math.hypot(dx, dy) - 17) <= 3 and not (dx > 0 and abs(dy) < dx)
+    caps = any(math.hypot(x - cx, y - cy) <= 3 for cx, cy in [(109, 80), (109, 104)])
+    if ring or caps:
         color = PURPLE
     return color
 

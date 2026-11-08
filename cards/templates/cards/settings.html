@@ -1,12 +1,13 @@
 {% extends 'cards/base.html' %}
-{% block title %}Settings · Word by word{% endblock %}
+{% block title %}Settings · Cardy{% endblock %}
 {% block layout_class %}layout-form{% endblock %}
-{% block header_actions %}{% include 'cards/_navigation.html' %}{% endblock %}
+{% block header_actions %}{% endblock %}
 {% block content %}
 <section class="page-heading">
-  <span class="eyebrow">AT YOUR OWN PACE</span>
-  <h1>Your rhythm.</h1>
-  <p class="intro">Choose how much practice makes a word feel familiar.</p>
+  <div class="section-title-row">
+    <a class="back-arrow" href="{% url 'home' %}" aria-label="Back home"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M15 5l-7 7 7 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></a>
+    <h1>Settings</h1>
+  </div>
 </section>
 <section class="panel form-panel" aria-label="Learning settings">
   {% if saved %}<p class="success-note" role="status">Settings saved.</p>{% endif %}
@@ -21,15 +22,10 @@
       <p class="field-help" id="{{ field.auto_id }}_helptext">{{ field.help_text }}</p>
     </div>
     {% endfor %}
-    <p class="muted">Know moves a word forward once per session. Repeat moves it back one stage; Don't know moves it back two. Setbacks never stack beyond two stages within a session.</p>
-    <p class="muted">Changes apply when you next review a word. Saved review dates and archived words stay as they are.</p>
-    <div class="form-actions">
-      <button class="button button-primary" type="submit">Save settings</button>
-      <a class="button button-secondary" href="{% url 'home' %}">Back home</a>
-    </div>
+    <button class="button button-primary" type="submit">Save settings</button>
   </form>
   <div class="delete-link">
-    <form method="post" action="{% url 'logout' %}">{% csrf_token %}<button class="text-button" type="submit">Log out of this device</button></form>
+    <form method="post" action="{% url 'logout' %}">{% csrf_token %}<button class="button button-secondary" type="submit">Log out of this device</button></form>
   </div>
 </section>
 {% endblock %}

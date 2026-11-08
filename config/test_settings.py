@@ -4,7 +4,8 @@ import secrets
 
 os.environ["DJANGO_SECRET_KEY"] = secrets.token_urlsafe(48)
 os.environ["DJANGO_DEBUG"] = "true"
-os.environ["APP_PIN_HASH"] = ""
+os.environ["DJANGO_LOCAL_TEST_LOGIN"] = "false"
+os.environ["LOCAL_TEST_NETWORK"] = ""
 
 from .settings import *  # noqa: E402,F403
 

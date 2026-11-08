@@ -1,0 +1,26 @@
+{% extends 'cards/base.html' %}
+{% block title %}Import preview · Cardy{% endblock %}
+{% block layout_class %}layout-form{% endblock %}
+{% block header_actions %}{% include 'cards/_navigation.html' %}{% endblock %}
+{% block content %}
+<section class="page-heading"><h1>Import preview</h1></section>
+<section aria-label="Import preview">
+  {% if expired %}
+    <p role="alert">This preview expired. Upload your CSV again.</p>
+    <a class="button button-secondary" href="{% url 'home' %}?cards=open">Back to My cards</a>
+  {% else %}
+    {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
+    <div class="import-table-scroll" tabindex="0" role="region" aria-label="CSV rows">
+      <table class="import-table">
+        <thead><tr><th scope="col">Chunk</th><th scope="col">Meaning</th><th scope="col">Example</th></tr></thead>
+        <tbody>{% for row in rows %}<tr><td>{{ row.chunk }}</td><td>{{ row.meaning|linebreaksbr }}</td><td>{{ row.example|linebreaksbr }}</td></tr>{% endfor %}</tbody>
+      </table>
+    </div>
+    <form method="post" class="form-actions">
+      {% csrf_token %}
+      <button class="button button-primary" type="submit">{% if add_count %}Import {{ add_count }} word{{ add_count|pluralize }}{% else %}Finish import{% endif %}</button>
+      <a class="button button-secondary import-cancel" href="{% url 'home' %}?cards=open">Cancel</a>
+    </form>
+  {% endif %}
+</section>
+{% endblock %}

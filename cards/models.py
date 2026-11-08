@@ -5,14 +5,6 @@ from django.db import models
 from django.utils import timezone
 
 
-class LoginGuard(models.Model):
-    """One shared row makes PIN throttling survive restarts and worker changes."""
-
-    id = models.PositiveSmallIntegerField(primary_key=True, default=1, editable=False)
-    failed_attempts = models.PositiveSmallIntegerField(default=0)
-    blocked_until = models.DateTimeField(null=True, blank=True)
-
-
 class Word(models.Model):
     """A chunk and its learning state, shared by the app's single owner."""
 
@@ -49,6 +41,17 @@ class LearningSettings(models.Model):
         ]
 
 
+class WordImport(models.Model):
+    """Temporary parsed CSV preview, stored privately in the database."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    rows = models.JSONField(default=list)
+    created_at = models.DateTimeField(auto_now_add=True)
+    imported_at = models.DateTimeField(null=True, blank=True)
+    added_count = models.PositiveIntegerField(default=0)
+    skipped_count = models.PositiveIntegerField(default=0)
+
+
 class StudySession(models.Model):
     """The queue and per-word baselines survive browser closure and restarts."""
 
@@ -68,3 +71,15 @@ class StudySession(models.Model):
                 name="one_open_study_session",
             ),
         ]
+
+
+class StudyReview(models.Model):
+    """A reversible answer; snapshots contain learning state, never card text."""
+
+    session = models.ForeignKey(StudySession, on_delete=models.CASCADE, related_name="reviews")
+    word = models.ForeignKey(Word, on_delete=models.CASCADE)
+    choice = models.CharField(max_length=10)
+    word_before = models.JSONField()
+    word_after = models.JSONField()
+    session_before = models.JSONField()
+    created_at = models.DateTimeField(auto_now_add=True)

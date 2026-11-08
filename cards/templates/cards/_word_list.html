@@ -1,20 +1,22 @@
 <ul class="word-list">
   {% for word in words %}
   <li class="word-card">
-    <div class="section-heading">
+    <label class="word-selection"><input class="word-checkbox" type="checkbox" name="word_ids" value="{{ word.pk }}" aria-label="Select {{ word.chunk }}"></label>
+    <div class="word-copy">
       <h3 class="word-chunk"><a href="{% url 'word-edit' word.pk %}">{{ word.chunk }}</a></h3>
-      <a class="nav-link" href="{% url 'word-edit' word.pk %}" aria-label="Edit {{ word.chunk }}">Edit</a>
+      {% if word.meaning %}<p class="word-meaning">{{ word.meaning|linebreaksbr }}</p>{% endif %}
+      {% if word.example %}<p class="word-example">{{ word.example|linebreaksbr }}</p>{% endif %}
+      <p class="word-status">{% if word.archived_at %}Learned{% elif word.ready_to_practice %}To learn{% else %}Practiced{% endif %}{% if not word.archived_at %} · {% if word.ready_to_practice %}Ready to review{% else %}Next review: {{ word.due_at|date:"j M Y" }}{% endif %}{% endif %}</p>
     </div>
-    {% if word.meaning %}<p class="word-meaning">{{ word.meaning|linebreaksbr }}</p>{% endif %}
-    {% if word.example %}<blockquote class="word-example">{{ word.example|linebreaksbr }}</blockquote>{% endif %}
-    {% if archived %}
-      <form method="post" action="{% url 'word-restore' word.pk %}" class="restore-form">
-        {% csrf_token %}
-        <button class="button button-secondary" type="submit" aria-label="Restore {{ word.chunk }} to deck">Restore to deck</button>
-      </form>
-    {% else %}
-      <p class="word-status">{% if word.due_at <= now %}Ready to review{% else %}Next review: {{ word.due_at|date:"j M Y" }}{% endif %}</p>
-    {% endif %}
+    <details class="word-actions" name="word-actions">
+      <summary aria-label="Actions for {{ word.chunk }}"><span aria-hidden="true">⋮</span></summary>
+      <div class="word-action-menu">
+        <a href="{% url 'word-reset' word.pk %}">Reset</a>
+        <a href="{% url 'word-edit' word.pk %}">Edit</a>
+        <button type="button" class="select-word" data-word-id="{{ word.pk }}">Select</button>
+        <a class="danger-link" href="{% url 'word-delete' word.pk %}">Delete</a>
+      </div>
+    </details>
   </li>
   {% endfor %}
 </ul>

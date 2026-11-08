@@ -1,16 +1,12 @@
 {% extends 'cards/base.html' %}
-{% block title %}Delete word · Word by word{% endblock %}
+{% block title %}Delete word · Cardy{% endblock %}
 {% block layout_class %}layout-form{% endblock %}
 {% block header_actions %}{% include 'cards/_navigation.html' %}{% endblock %}
 {% block content %}
 <section class="page-heading">
-  <span class="eyebrow">YOUR COLLECTION</span>
   <h1>Delete this word?</h1>
-  <p class="intro">This removes the word and its learning progress permanently.</p>
 </section>
 <section class="panel form-panel" aria-label="Confirm deletion">
-  <h2 class="word-chunk">{{ word.chunk }}</h2>
-  <p class="muted">You can cancel to keep it in your collection.</p>
   <form method="post" class="form-actions">
     {% csrf_token %}
     <button class="button button-danger" type="submit">Delete word</button>

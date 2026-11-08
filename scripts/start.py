@@ -12,6 +12,8 @@ def main():
         "gunicorn", "config.wsgi:application", "--bind", f"0.0.0.0:{port}",
         "--workers", "2", "--threads", "2", "--timeout", "60",
         "--access-logfile", "-", "--error-logfile", "-",
+        # Log paths only; OAuth callback query strings contain temporary codes.
+        "--access-logformat", '%(h)s %(t)s "%(m)s %(U)s %(H)s" %(s)s %(b)s',
     ])
 
 

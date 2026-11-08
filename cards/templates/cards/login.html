@@ -1,6 +1,6 @@
 {% extends 'cards/base.html' %}
 {% block layout_class %}layout-login{% endblock %}
-{% block title %}Welcome · Word by word{% endblock %}
+{% block title %}Welcome · Cardy{% endblock %}
 {% block content %}
 <section class="welcome">
   <span class="eyebrow">YOUR ENGLISH, EVERY DAY</span>
@@ -10,20 +10,21 @@
 <section class="panel login-panel" aria-labelledby="login-title">
   <span class="card-symbol" aria-hidden="true">✦</span>
   <h2 id="login-title">Welcome back</h2>
-  {% if unconfigured %}
-    <p role="alert">Your private space isn't configured yet. Complete the local setup or set the server's PIN configuration.</p>
-  {% else %}
-    <p class="muted">Enter your four-digit PIN to get started.</p>
-    <form method="post" class="stack">
-      {% csrf_token %}
-      <div>
-        <label for="pin">Your PIN</label>
-        <input id="pin" class="pin-input" name="pin" type="password" inputmode="numeric" pattern="[0-9]{4}" minlength="4" maxlength="4" autocomplete="current-password" required {% if error %}aria-invalid="true" aria-describedby="login-error"{% endif %}>
-      </div>
-      {% if error %}<p class="error" id="login-error" role="alert">{{ error }}</p>{% endif %}
-      <button class="button button-primary" type="submit">Unlock my words <span aria-hidden="true">→</span></button>
+  {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
+  {% if local_test_login %}
+    <form method="post" action="{% url 'local-test-login' %}">
+      {% csrf_token %}<button class="button button-primary" type="submit">Continue as test user →</button>
+    </form>
+    <p class="fine-print">Local testing only. This uses a separate test deck stored on your computer.</p>
+  {% endif %}
+  {% if configured %}
+    <p class="muted">Sign in to open your words.</p>
+    <form method="post" action="{% url 'google-login' %}">
+      {% csrf_token %}<button class="button button-secondary" type="submit">Sign in with Google</button>
     </form>
     <p class="fine-print">Your login stays remembered for 30 days.</p>
+  {% elif not local_test_login %}
+    <p role="alert">Google sign-in isn't configured yet.</p>
   {% endif %}
 </section>
 {% endblock %}

@@ -15,7 +15,12 @@ if not SECRET_KEY:
         "Set DJANGO_SECRET_KEY. For local setup, run python scripts/setup_local.py."
     )
 DEBUG = os.environ.get("DJANGO_DEBUG", "false").lower() == "true"
-APP_PIN_HASH = os.environ.get("APP_PIN_HASH", "")
+GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "").strip()
+GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET", "").strip()
+ALLOWED_GOOGLE_EMAIL = os.environ.get("ALLOWED_GOOGLE_EMAIL", "").strip().lower()
+LOCAL_TEST_LOGIN = os.environ.get("DJANGO_LOCAL_TEST_LOGIN", "false").lower() == "true"
+LOCAL_TEST_NETWORK = os.environ.get("LOCAL_TEST_NETWORK", "").strip()
+RAILWAY_ENVIRONMENT_ID = os.environ.get("RAILWAY_ENVIRONMENT_ID", "")
 ALLOWED_HOSTS = [
     host.strip()
     for host in os.environ.get("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1,[::1]").split(",")
@@ -55,7 +60,7 @@ TEMPLATES = [
         "DIRS": [],
         "APP_DIRS": True,
         "OPTIONS": {
-            "context_processors": ["django.template.context_processors.request"],
+            "context_processors": ["django.template.context_processors.request", "cards.context_processors.local_asset_version"],
         },
     }
 ]
@@ -70,7 +75,9 @@ if DATABASE_URL:
         raise ImproperlyConfigured("DATABASE_URL must point to PostgreSQL.")
     DATABASES = {"default": database}
 elif DEBUG:
-    DATABASES = {"default": {"ENGINE": "django.db.backends.sqlite3", "NAME": BASE_DIR / "db.sqlite3"}}
+    # Test sign-in uses its own local deck; the original deck is preserved.
+    local_database = "db.local-test.sqlite3" if LOCAL_TEST_LOGIN else "db.sqlite3"
+    DATABASES = {"default": {"ENGINE": "django.db.backends.sqlite3", "NAME": BASE_DIR / local_database}}
 else:
     raise ImproperlyConfigured("DATABASE_URL is required in production. SQLite is only for local development.")
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
@@ -104,3 +111,9 @@ SECURE_HSTS_PRELOAD = not DEBUG
 SECURE_CONTENT_TYPE_NOSNIFF = True
 SECURE_REFERRER_POLICY = "same-origin"
 X_FRAME_OPTIONS = "DENY"
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "filters": {"oauth_query": {"()": "cards.logging.RedactOAuthQuery"}},
+    "loggers": {"django.server": {"filters": ["oauth_query"]}},
+}
