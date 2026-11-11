@@ -31,17 +31,17 @@
 </section>
 <details class="panel mcp-guide">
   <summary>Connect Codex</summary>
-  <p>Add two custom MCP connections in Codex for {% if mcp_local_test %}your <strong>local test deck</strong>{% else %}your production Cardy deck{% endif %}.</p>
-  <p>Generate each token below, then copy its complete value into Codex. Tokens are shown once. Regenerating replaces the previous token for that connection; update every device using it.</p>
-  <p>Fill in each form from top to bottom, in this exact order.</p>
-  <h3>Check duplicates — {% if mcp_local_test %}cardy-local{% else %}cardy{% endif %}</h3>
-  {% include 'cards/_mcp_connection_guide.html' with prefix='mcp-read' connection_name=mcp_local_test|yesno:'cardy-local,cardy' role='read' %}
-  <h3>Add approved cards — {% if mcp_local_test %}cardy-local-add{% else %}cardy-add{% endif %}</h3>
-  {% include 'cards/_mcp_connection_guide.html' with prefix='mcp-write' connection_name=mcp_local_test|yesno:'cardy-local-add,cardy-add' role='write' %}
-  <p>After saving the add connection, set its write-tool approval to <strong>Ask / Prompt</strong>.</p>
-  <p>Your MCP connection is ready. Adding cards still requires your approval of the exact batch in the chat.</p>
+  <details class="mcp-connection">
+    <summary>Check duplicates — {% if mcp_local_test %}cardy-local{% else %}cardy{% endif %}</summary>
+    {% include 'cards/_mcp_connection_guide.html' with prefix='mcp-read' connection_name=mcp_local_test|yesno:'cardy-local,cardy' role='read' %}
+  </details>
+  <details class="mcp-connection">
+    <summary>Add approved cards — {% if mcp_local_test %}cardy-local-add{% else %}cardy-add{% endif %}</summary>
+    {% include 'cards/_mcp_connection_guide.html' with prefix='mcp-write' connection_name=mcp_local_test|yesno:'cardy-local-add,cardy-add' role='write' %}
+    <p>After saving the add connection, set its write-tool approval to <strong>Ask / Prompt</strong>.</p>
+    <p>Adding cards still requires your approval of the exact batch in the chat.</p>
+  </details>
   <p class="field-help" role="status" aria-live="polite" id="mcp-copy-status"></p>
-  <p class="muted">Paste tokens only into Codex connection settings. This connection gives Codex access to Cardy, not to your other chats.</p>
 </details>
 {% endblock %}
 {% block scripts %}<script src="{% static 'cards/settings.js' %}" defer></script>{% endblock %}

@@ -11,14 +11,18 @@ from .duplicates import classify_rows
 from .forms import WordForm
 from .models import McpCardBatch, Word
 
+MAX_CARDS = 100
+
 ADD_TOOL = {
     "name": "add_cards",
     "title": "Add approved cards to Cardy",
     "description": (
-        "Add 1–10 cards only after the user approves these exact Obverse, Reverse and Extra values "
+        "Add 1–100 cards only after the user approves these exact Obverse, Reverse and Extra values "
         "in the current chat. Never call from a scheduled/background run. Keep batch_id unchanged "
         "when retrying the same approved batch. Existing Obverses (including Learned) are skipped, "
-        "never overwritten. Requires cards:add OAuth permission or the separate add-cards credential."
+        "never overwritten. Requests with more than 100 cards are rejected before any cards are added. "
+        "The chat may request a lower count. The 64 KiB JSON request limit also applies. "
+        "Requires cards:add OAuth permission or the separate add-cards credential."
     ),
     "inputSchema": {
         "type": "object", "additionalProperties": False,
@@ -26,7 +30,7 @@ ADD_TOOL = {
         "properties": {
             "batch_id": {"type": "string", "format": "uuid"},
             "approved": {"type": "boolean", "const": True},
-            "cards": {"type": "array", "minItems": 1, "maxItems": 10, "items": {
+            "cards": {"type": "array", "minItems": 1, "maxItems": MAX_CARDS, "items": {
                 "type": "object", "additionalProperties": False,
                 "required": ["obverse", "reverse", "extra"],
                 "properties": {
@@ -52,8 +56,8 @@ def add_cards(arguments):
     except (ValueError, TypeError, AttributeError):
         raise ValueError("batch_id must be a UUID; reuse it only for the same approved batch.") from None
     cards = arguments["cards"]
-    if not isinstance(cards, list) or not 1 <= len(cards) <= 10:
-        raise ValueError("Provide 1–10 approved cards.")
+    if not isinstance(cards, list) or not 1 <= len(cards) <= MAX_CARDS:
+        raise ValueError("Provide 1–100 approved cards. Requests with more than 100 cards are rejected.")
     rows = []
     for card in cards:
         if (not isinstance(card, dict) or set(card) != {"obverse", "reverse", "extra"}

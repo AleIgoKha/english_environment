@@ -14,7 +14,9 @@ preview and obtain approval for that target; never silently switch decks or
 bypass a missing connection with SQL, shell commands, browser automation, or
 another credential.
 
-Accept 1–10 cards with `obverse`, `reverse`, and `extra` strings. Obverse contains
+Accept 1–100 cards with `obverse`, `reverse`, and `extra` strings. The user's chat
+prompt may set a lower count. The server rejects requests exceeding 100 cards;
+do not automatically split an oversized count to bypass that rejection. Obverse contains
 the correct phrase. Reverse contains only `Previously: [exact original]` and
 `Better: [natural corrected example]` on separate lines. Extra is normally blank.
 Limits are 300 / 2,000 / 4,000 characters respectively. New cards start with the
@@ -31,13 +33,18 @@ Never invoke a write tool during a scheduled or unattended run, even with standi
 instructions to add cards daily. In that situation, return suggestions and await
 a new user message. Do not add cards merely because this skill was selected.
 
-After approval, check the Obverses through the read-only connection and omit
+After approval, check the Obverses through the read-only connection in groups of
+at most 100 phrases per check and omit
 existing matches. If the check fails, stop and report that duplication was not
 verified. Do not replace omitted cards without approval.
 
 Call the approved deck's `add_cards` tool with only the approved remaining cards,
-`approved: true`, and a fresh UUID `batch_id`. Preserve the exact request and UUID
+`approved: true`, and a fresh UUID `batch_id`. For a large batch, split only the
+approved cards into JSON requests of at most 64 KiB (UTF-8, including the RPC
+envelope), assigning and saving a separate stable UUID to each request. Preserve the exact request and UUID
 when retrying after a timeout; do not create a new ID to work around an uncertain
 result. Respect the tool's approval prompt. Never claim success from submission
 alone: use the returned added/skipped counts. Report the target deck and counts
-briefly. If no new cards remain, report that nothing was added.
+briefly, summing confirmed counts across requests. Report partial completion if a
+request fails; do not resend completed requests with new IDs. If no new cards
+remain, report that nothing was added.

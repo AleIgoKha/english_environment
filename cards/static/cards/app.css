@@ -163,6 +163,8 @@ input[aria-invalid="true"], textarea[aria-invalid="true"] { border-color: #a13f6
 .mcp-guide > summary { cursor: pointer; color: var(--purple-dark); font-size: 18px; font-weight: 650; }
 .mcp-guide code { font-size: .9em; }
 .mcp-guide > p:last-child { margin-bottom: 0; }
+.mcp-connection { margin-top: 16px; }
+.mcp-connection > summary { cursor: pointer; font-size: 17px; font-weight: 600; }
 .mcp-steps { padding-left: 22px; }
 .mcp-steps > li + li { margin-top: 12px; }
 .mcp-copy-field { margin: 12px 0; }

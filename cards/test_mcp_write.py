@@ -76,12 +76,45 @@ class McpWriteTests(TestCase):
         self.assertEqual(McpCardBatch.objects.count(), 1)
 
     def test_invalid_batch_is_rejected_without_partial_writes(self):
-        for cards in ([], self.arguments["cards"] * 11, [{"obverse": ""}],
+        for cards in ([], None, {}, [{"obverse": ""}],
                       [{"obverse": "valid", "reverse": "x" * 2001, "extra": ""}]):
             self.arguments["cards"] = cards
             self.assertIn("error", self.rpc().json())
         self.assertFalse(Word.objects.exists())
         self.assertFalse(McpCardBatch.objects.exists())
+
+    def test_more_than_ten_cards_are_added_with_duplicate_checks_and_safe_retries(self):
+        Word.objects.create(chunk="existing phrase", meaning="preserve")
+        self.arguments["cards"] = [
+            {"obverse": f"approved phrase {index}", "reverse": "Example", "extra": ""}
+            for index in range(25)
+        ] + [{"obverse": "EXISTING PHRASE", "reverse": "replacement", "extra": ""}]
+        first = self.rpc().json()["result"]["structuredContent"]
+        self.assertEqual((first["added_count"], first["skipped_count"]), (25, 1))
+        self.assertEqual(Word.objects.count(), 26)
+        self.assertEqual(Word.objects.get(chunk="existing phrase").meaning, "preserve")
+        retry = self.rpc().json()["result"]["structuredContent"]
+        self.assertEqual(retry, first | {"replayed": True})
+        self.assertEqual(Word.objects.count(), 26)
+        inventory = self.rpc("tools/list", {}).json()["result"]["tools"][0]
+        self.assertEqual(inventory["inputSchema"]["properties"]["cards"]["maxItems"], 100)
+
+    def test_one_hundred_cards_succeed_but_one_hundred_one_are_rejected_atomically(self):
+        self.arguments["cards"] = [
+            {"obverse": f"boundary phrase {index}", "reverse": "", "extra": ""}
+            for index in range(100)
+        ]
+        result = self.rpc().json()["result"]["structuredContent"]
+        self.assertEqual(result["added_count"], 100)
+        self.assertEqual(Word.objects.count(), 100)
+        self.arguments["batch_id"] = str(uuid.uuid4())
+        self.arguments["cards"].append({"obverse": "must not be added", "reverse": "", "extra": ""})
+        response = self.rpc().json()
+        self.assertEqual(response["error"]["code"], -32602)
+        self.assertIn("more than 100", response["error"]["message"])
+        self.assertEqual(Word.objects.count(), 100)
+        self.assertFalse(Word.objects.filter(chunk="must not be added").exists())
+        self.assertEqual(McpCardBatch.objects.count(), 1)
 
     def test_database_failure_rolls_back_and_retry_uses_same_batch(self):
         def fail_after_first(words):

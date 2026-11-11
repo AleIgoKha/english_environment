@@ -68,7 +68,7 @@ matches. CSV generation does not add cards or reserve phrases. Cardy's import
 check remains the final protection against duplicates added in the meantime.
 
 `add_cards` requires OAuth `cards:add` or the separate `CARDY_MCP_WRITE_TOKEN_SHA256`
-credential. It accepts 1–10 cards (`obverse`, `reverse`, `extra`), `approved: true`,
+credential. It accepts 1–100 cards (`obverse`, `reverse`, `extra`), `approved: true`,
 and a UUID `batch_id`. The chat skill requires the user to see and approve the
 exact batch; client configuration requests approval for the write tool. The
 boolean is a validation requirement, not independent proof of human consent.
@@ -76,6 +76,11 @@ The server adds atomically, skips duplicates, and saves a text-free receipt.
 Retries of the same batch return its original counts; changing a batch requires
 a new ID and new approval. Existing cards are never overwritten. The write
 credential cannot call the read tool, and the read credential cannot add cards.
+The server rejects requests with more than 100 submitted cards before validation,
+deduplication, or writes; duplicate cards still count toward this limit. The chat
+prompt may request fewer cards. The 64 KiB JSON request-size limit also applies.
+Do not automatically split an oversized count to bypass rejection. Duplicate
+lookups accept at most 100 phrases per call.
 
 ## Legacy bearer access
 

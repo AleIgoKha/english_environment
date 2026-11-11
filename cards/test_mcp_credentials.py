@@ -93,7 +93,7 @@ class McpCredentialTests(TestCase):
         session["auth_kind"] = "local-test"
         session.save()
         page = self.client.get(reverse("learning-settings"), HTTP_HOST="localhost")
-        self.assertContains(page, "local test deck")
+        self.assertEqual(page.status_code, 200)
         self.assertContains(page, 'value="http://localhost/mcp/"')
         self.assertContains(page, 'value="cardy-local"')
         local = self.client.post(reverse("mcp-token-generate", args=["read"]), HTTP_HOST="localhost")
