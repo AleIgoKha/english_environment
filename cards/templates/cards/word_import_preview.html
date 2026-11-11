@@ -12,7 +12,7 @@
     {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
     <div class="import-table-scroll" tabindex="0" role="region" aria-label="CSV rows">
       <table class="import-table">
-        <thead><tr><th scope="col">Chunk</th><th scope="col">Meaning</th><th scope="col">Example</th></tr></thead>
+        <thead><tr><th scope="col">Obverse</th><th scope="col">Reverse</th><th scope="col">Extra</th></tr></thead>
         <tbody>{% for row in rows %}<tr><td>{{ row.chunk }}</td><td>{{ row.meaning|linebreaksbr }}</td><td>{{ row.example|linebreaksbr }}</td></tr>{% endfor %}</tbody>
       </table>
     </div>

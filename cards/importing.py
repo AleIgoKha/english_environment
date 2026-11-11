@@ -15,7 +15,11 @@ from .models import Word, WordImport
 MAX_BYTES = 2 * 1024 * 1024
 MAX_WORDS = 1000
 PREVIEW_LIFETIME = timedelta(hours=24)
-COLUMNS = {"chunk": "chunk", "front": "chunk", "meaning": "meaning", "back": "meaning", "example": "example", "hint": "example"}
+COLUMNS = {
+    "obverse": "chunk", "chunk": "chunk", "front": "chunk",
+    "reverse": "meaning", "meaning": "meaning", "back": "meaning",
+    "extra": "example", "example": "example", "hint": "example",
+}
 
 
 @sensitive_variables()
@@ -36,10 +40,10 @@ def parse_csv(upload):
         headers = next(reader, [])
         fields = [COLUMNS.get(header.strip().lower()) for header in headers]
         if "chunk" not in fields:
-            raise ValidationError("The CSV needs a Chunk or front column.")
+            raise ValidationError("The CSV needs an Obverse, Chunk or front column.")
         for field in ("chunk", "meaning", "example"):
             if fields.count(field) > 1:
-                raise ValidationError("Use only one column for each of Chunk, Meaning and Example.")
+                raise ValidationError("Use only one column for each of Obverse, Reverse and Extra, including older header names.")
         rows = []
         for values in reader:
             if not any(value.strip() for value in values):

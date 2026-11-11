@@ -19,7 +19,7 @@
     {{ form.non_field_errors }}
     {% for field in form %}
     <div class="form-field">
-      <label for="{{ field.id_for_label }}">{% if field.name == 'chunk' %}Chunk <span class="optional-label">(a word or phrase you want to learn)</span>{% else %}{{ field.label }}{% endif %}{% if not field.field.required %} <span class="optional-label">(optional)</span>{% endif %}</label>
+      <label for="{{ field.id_for_label }}">{% if field.name == 'chunk' %}Obverse <span class="optional-label">(a word or phrase you want to learn)</span>{% else %}{{ field.label }}{% endif %}{% if not field.field.required %} <span class="optional-label">(optional)</span>{% endif %}</label>
       {{ field }}
       {{ field.errors }}
       {% if field.help_text %}<p class="field-help" id="{{ field.auto_id }}_helptext">{{ field.help_text }}</p>{% endif %}

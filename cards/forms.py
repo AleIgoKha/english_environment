@@ -9,7 +9,7 @@ class WordForm(forms.ModelForm):
     class Meta:
         model = Word
         fields = ["chunk", "meaning", "example"]
-        labels = {"chunk": "Chunk (a word or phrase you want to learn)", "meaning": "Meaning", "example": "Example"}
+        labels = {"chunk": "Obverse (a word or phrase you want to learn)", "meaning": "Reverse", "example": "Extra"}
         widgets = {
             "chunk": forms.TextInput(attrs={"placeholder": "e.g. take your time", "autofocus": True}),
             "meaning": forms.Textarea(attrs={"rows": 3}),

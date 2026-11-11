@@ -38,7 +38,7 @@ Configure the Google variables before publishing. Production Google access is re
 
 ## Learning rules
 
-- Chunk is required; Meaning and Example are optional. Open My cards to search or filter by All, To learn, Practiced, or Learned. The three-dot menu offers Reset, Edit, Select, and Delete. Reset returns a word to To learn, due immediately; Reset and Delete ask for confirmation. Select enables checkboxes and bulk Reset / Delete with confirmation.
+- Obverse is required (up to 300 characters); Reverse (up to 2,000) and Extra (up to 4,000) are optional. Open My cards to search or filter by All, To learn, Practiced, or Learned. The three-dot menu offers Reset, Edit, Select, and Delete. Reset returns a word to To learn, due immediately; Reset and Delete ask for confirmation. Select enables checkboxes and bulk Reset / Delete with confirmation.
 - Start opens one ongoing session. New and due words are appended to the end; an empty queue waits without ending the session or reviewing future cards early. The study screen checks for arrivals every five seconds while visible, and progress resumes after reopening.
 - Reveal the answer, then choose Know, Repeat, or Don't know.
 - Know advances a stage unless there was an earlier setback in the current review round. The default fifth success marks a word Learned.
@@ -53,7 +53,7 @@ Configure the Google variables before publishing. Production Google access is re
 
 Open **My cards**, then tap the round upload icon beside Search. Choose a UTF-8 `.csv`, review the preview, then confirm the import. Uploading alone does not add words.
 
-Supported headers are `Chunk,Meaning,Example` or DuoCards' `front,back,hint,publishedAt`. Only Chunk/front is required; published dates are ignored. Quoted commas and multiline examples are supported. Use no more than 1,000 rows or 2 MB per upload.
+Use CSV headers `Obverse,Reverse,Extra`. Older headers `Chunk,Meaning,Example` and DuoCards' `front,back,hint,publishedAt` remain supported. Only Obverse/Chunk/front is required; published dates are ignored. Quoted commas and multiline examples are supported. Use no more than 1,000 rows or 2 MB per upload.
 
 New words start in **To learn**, due immediately. Every CSV row is imported, including duplicates within the file or matching words already in the deck. Existing text and learning progress are preserved. Reconfirming the same preview does not import it twice.
 

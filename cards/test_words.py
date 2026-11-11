@@ -196,9 +196,9 @@ class WordManagementTests(TestCase):
         self.assertRedirects(self.client.get(reverse("archive")), reverse("home") + "?progress=learned")
         self.assertContains(self.client.get(reverse("home"), {"progress": "learned"}), "No words yet")
         response = self.client.get(reverse("word-add"))
-        self.assertContains(response, "Chunk")
-        self.assertContains(response, "Meaning")
-        self.assertContains(response, "Example")
+        self.assertContains(response, "Obverse")
+        self.assertContains(response, "Reverse")
+        self.assertContains(response, "Extra")
         self.assertIn("no-store", response["Cache-Control"])
 
 

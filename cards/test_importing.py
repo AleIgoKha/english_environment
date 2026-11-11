@@ -64,6 +64,21 @@ class CsvImportTests(TestCase):
         self.client.post(response["Location"])
         self.assertEqual(Word.objects.get().meaning, "greeting")
 
+    def test_new_headers_preview_and_import_with_existing_limits(self):
+        reverse_text = "r" * 2000
+        extra_text = "e" * 4000
+        response = self.upload(f'Obverse,Reverse,Extra\nwith a focus on clarity,{reverse_text},{extra_text}\n')
+        preview = self.client.get(response["Location"])
+        for label in ("Obverse", "Reverse", "Extra"):
+            self.assertContains(preview, f'<th scope="col">{label}</th>')
+        self.client.post(response["Location"])
+        word = Word.objects.get()
+        self.assertEqual((word.chunk, word.meaning, word.example),
+                         ("with a focus on clarity", reverse_text, extra_text))
+        self.assertEqual(self.upload(f'Obverse,Reverse\nhello,{reverse_text}r\n').status_code, 400)
+        self.assertEqual(self.upload('Obverse,Chunk\nhello,hello\n').status_code, 400)
+        self.assertEqual(Word.objects.count(), 1)
+
     def test_duplicates_preserve_existing_content_and_progress(self):
         existing = Word.objects.create(chunk="Take your time", meaning="original", stage=5, archived_at=timezone.now())
         response = self.upload('front,back\n TAKE   YOUR TIME ,replacement\nnew chunk,first\nNEW CHUNK,second\n')
