@@ -40,13 +40,6 @@
   {% include 'cards/_mcp_connection_guide.html' with prefix='mcp-write' connection_name=mcp_local_test|yesno:'cardy-local-add,cardy-add' role='write' %}
   <p>After saving the add connection, set its write-tool approval to <strong>Ask / Prompt</strong>.</p>
   <p>Your MCP connection is ready. Adding cards still requires your approval of the exact batch in the chat.</p>
-  <details>
-  <summary>Optional: daily writing skills</summary>
-  <p>Skills add the daily-review workflow. They are not required to connect to Cardy.</p>
-  <p>Copy the <code>cardy-daily-writing</code> and <code>cardy-add-cards</code> skill folders into this folder on the new computer, then start a new Codex chat:</p>
-  {% include 'cards/_copy_field.html' with copy_id='mcp-skills-folder' label='Skills folder' value='~/.codex/skills/' %}
-  <p>Use <code>$cardy-daily-writing</code> for up to 10 suggestions checked for duplicates. Use <code>$cardy-add-cards</code> to review and approve the exact cards before adding. Scheduled reviews only suggest cards.</p>
-  </details>
   <p class="field-help" role="status" aria-live="polite" id="mcp-copy-status"></p>
   <p class="muted">Paste tokens only into Codex connection settings. This connection gives Codex access to Cardy, not to your other chats.</p>
 </details>
