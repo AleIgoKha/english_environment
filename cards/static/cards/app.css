@@ -186,12 +186,7 @@ input[aria-invalid="true"], textarea[aria-invalid="true"] { border-color: #a13f6
 .study-card { padding: 30px 24px; }
 .waiting-title { margin: 0; font-size: 28px; letter-spacing: -.7px; text-align: center; }
 .study-progress { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 12px; }
-.study-scale { flex: 0 0 50%; min-width: 0; display: grid; gap: 8px; }
-.study-progress-label { text-align: right; color: var(--purple-dark); font-size: 14px; }
-.study-progress-bar { display: block; width: 100%; height: 12px; border: 0; border-radius: 999px; overflow: hidden; appearance: none; background: var(--lavender); accent-color: var(--purple); }
-.study-progress-bar::-webkit-progress-bar { background: var(--lavender); border-radius: 999px; }
-.study-progress-bar::-webkit-progress-value { background: var(--purple); border-radius: 999px; }
-.study-progress-bar::-moz-progress-bar { background: var(--purple); border-radius: 999px; }
+.study-progress-label { display: inline-block; padding: 12px 20px; border-radius: 999px; background: var(--lavender); color: var(--purple-dark); font-size: 14px; }
 .study-chunk { margin: 20px 0 36px; font-size: clamp(26px, 6vw, 36px); line-height: 1.35; overflow-wrap: anywhere; }
 .study-answer { border-top: 1px solid var(--border); padding: 16px 0 24px; overflow-wrap: anywhere; }
 .study-answer hr { border: 0; border-top: 1px solid var(--border); margin: 20px 0; }
