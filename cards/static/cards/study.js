@@ -23,7 +23,10 @@ if (study) {
         window.location.reload();
         return;
       }
-      study.querySelector(".study-progress .badge").textContent = `${state.remaining} left`;
+      study.querySelector(".study-progress-label").textContent = `${state.remaining} of ${state.total} left`;
+      const progress = study.querySelector(".study-progress-bar");
+      progress.max = Math.max(1, state.total);
+      progress.value = state.completed;
     } catch {
       // Keep the current card visible and retry when the connection returns.
     } finally {

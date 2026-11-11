@@ -7,7 +7,7 @@
 <div id="study-live" data-status-url="{% url 'study-status' %}" data-token="{{ study_session.response_token }}" data-revealed="{{ study_session.revealed|yesno:'true,false' }}" data-can-undo="{{ can_undo|yesno:'true,false' }}">
   <div class="study-progress">
     <a class="back-arrow" href="{% url 'home' %}" aria-label="Pause and return home"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M15 5l-7 7 7 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></a>
-    <span class="badge">0 left</span>
+    {% include 'cards/_study_progress.html' %}
   </div>
   <section class="panel study-card" aria-label="Waiting for cards">
     <h1 class="waiting-title">Well done!</h1>

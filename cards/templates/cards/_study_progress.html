@@ -1,0 +1,4 @@
+<div class="study-scale">
+  <span id="study-progress-label" class="study-progress-label">{{ remaining }} of {{ study_session.total_words }} left</span>
+  <progress class="study-progress-bar" max="{{ study_session.total_words|default:1 }}" value="{{ completed }}" aria-labelledby="study-progress-label"></progress>
+</div>

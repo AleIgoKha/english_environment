@@ -11,6 +11,7 @@ class Word(models.Model):
     chunk = models.CharField(max_length=300)
     meaning = models.TextField(blank=True, max_length=2000)
     example = models.TextField(blank=True, max_length=4000)
+    show_reverse_immediately = models.BooleanField(default=False)
     stage = models.PositiveSmallIntegerField(default=0)
     due_at = models.DateTimeField(default=timezone.now)
     archived_at = models.DateTimeField(null=True, blank=True)

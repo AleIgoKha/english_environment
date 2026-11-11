@@ -6,7 +6,7 @@
 <section class="page-heading">
   {% if word %}
   <div class="section-title-row">
-    <a class="back-arrow" href="{% url 'home' %}?{% if word.archived_at %}progress=learned{% else %}cards=open{% endif %}" aria-label="Back to My cards"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M15 5l-7 7 7 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></a>
+    <a class="back-arrow" href="{% if return_to_study %}{% url 'study' %}{% else %}{% url 'home' %}?{% if word.archived_at %}progress=learned{% else %}cards=open{% endif %}{% endif %}" aria-label="{% if return_to_study %}Back to practice{% else %}Back to My cards{% endif %}"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M15 5l-7 7 7 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></a>
     <h1>Edit word</h1>
   </div>
   {% else %}
@@ -16,19 +16,27 @@
 <section class="panel form-panel" aria-label="Word details">
   <form method="post" class="stack word-form">
     {% csrf_token %}
+    {% if return_to_study %}<input type="hidden" name="return_to" value="study">{% endif %}
     {{ form.non_field_errors }}
     {% for field in form %}
+    {% if field.name == 'show_reverse_immediately' %}
+    <div class="form-field">
+      <label class="card-switch" for="{{ field.id_for_label }}">{{ field }}<span class="switch-track" aria-hidden="true"></span><span>{{ field.label }}</span></label>
+      {{ field.errors }}
+    </div>
+    {% else %}
     <div class="form-field">
       <label for="{{ field.id_for_label }}">{% if field.name == 'chunk' %}Obverse <span class="optional-label">(a word or phrase you want to learn)</span>{% else %}{{ field.label }}{% endif %}{% if not field.field.required %} <span class="optional-label">(optional)</span>{% endif %}</label>
       {{ field }}
       {{ field.errors }}
       {% if field.help_text %}<p class="field-help" id="{{ field.auto_id }}_helptext">{{ field.help_text }}</p>{% endif %}
     </div>
+    {% endif %}
     {% endfor %}
     <div class="form-actions{% if word %} word-edit-actions{% endif %}">
       <button class="button button-primary" type="submit">{% if word %}Save changes{% else %}Add word{% endif %}</button>
       {% if not word %}<a class="button button-secondary" href="{% url 'home' %}">Cancel</a>{% endif %}
-      {% if word %}<a class="button button-danger" href="{% url 'word-delete' word.pk %}">Delete word</a>{% endif %}
+      {% if return_to_study %}<a class="button button-secondary" href="{% url 'study' %}">Cancel</a>{% elif word %}<a class="button button-danger" href="{% url 'word-delete' word.pk %}">Delete word</a>{% endif %}
     </div>
   </form>
 </section>

@@ -1,19 +1,32 @@
 from django import forms
 
 from .models import LearningSettings, Word
+from .duplicates import existing_obverses, obverse_key
 
 
 class WordForm(forms.ModelForm):
     """Only word content is editable; learning state stays server-controlled."""
 
+    def __init__(self, *args, check_duplicates=True, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.check_duplicates = check_duplicates
+
+    def clean_chunk(self):
+        chunk = self.cleaned_data["chunk"]
+        if self.check_duplicates and obverse_key(chunk) in existing_obverses(self.instance.pk):
+            raise forms.ValidationError("A card with this Obverse already exists, including learned cards.")
+        return chunk
+
     class Meta:
         model = Word
-        fields = ["chunk", "meaning", "example"]
-        labels = {"chunk": "Obverse (a word or phrase you want to learn)", "meaning": "Reverse", "example": "Extra"}
+        fields = ["chunk", "meaning", "example", "show_reverse_immediately"]
+        labels = {"chunk": "Obverse (a word or phrase you want to learn)", "meaning": "Reverse", "example": "Extra",
+                  "show_reverse_immediately": "Start with reverse"}
         widgets = {
             "chunk": forms.TextInput(attrs={"placeholder": "e.g. take your time", "autofocus": True}),
             "meaning": forms.Textarea(attrs={"rows": 3}),
             "example": forms.Textarea(attrs={"rows": 4}),
+            "show_reverse_immediately": forms.CheckboxInput(attrs={"role": "switch"}),
         }
 
 

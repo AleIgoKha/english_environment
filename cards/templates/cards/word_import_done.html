@@ -6,6 +6,7 @@
 <section class="page-heading"><h1>Import complete</h1></section>
 <section class="panel form-panel" aria-label="Import result">
   <p class="success-note" role="status">Added {{ batch.added_count }} word{{ batch.added_count|pluralize }}.</p>
+  {% if batch.skipped_count %}<p>Skipped {{ batch.skipped_count }} duplicate{{ batch.skipped_count|pluralize }}.</p>{% endif %}
   <a class="button button-primary" href="{% url 'home' %}?cards=open">OK</a>
 </section>
 {% endblock %}

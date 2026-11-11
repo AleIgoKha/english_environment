@@ -14,8 +14,8 @@ from django.db import DatabaseError, connection, connections
 from django.test import SimpleTestCase, TestCase, TransactionTestCase, override_settings
 from django.urls import reverse
 
-from . import learning
-from .models import LearningSettings, StudyReview, StudySession, Word
+from . import importing, learning
+from .models import LearningSettings, StudyReview, StudySession, Word, WordImport
 from .tests import GOOGLE_SETTINGS
 from scripts import apply_railway_config
 
@@ -135,6 +135,19 @@ class PostgresConcurrencyTests(TransactionTestCase):
         sessions = self.run_together(lambda: learning.start_or_resume().pk)
         self.assertEqual(sessions[0], sessions[1])
         self.assertEqual(StudySession.objects.count(), 1)
+
+    def test_concurrent_imports_with_matching_fronts_add_one_card(self):
+        rows = [{"chunk": "same phrase", "meaning": "first", "example": ""}]
+        batches = [WordImport.objects.create(rows=rows) for _ in range(2)]
+        # Claim different batches in each worker, then confirm simultaneously.
+        from queue import Queue
+        pending = Queue()
+        for batch in batches:
+            pending.put(batch.pk)
+        self.run_together(lambda: importing.confirm_import(pending.get()).pk)
+        self.assertEqual(Word.objects.filter(chunk="same phrase").count(), 1)
+        counts = sorted(WordImport.objects.values_list("added_count", "skipped_count"))
+        self.assertEqual(counts, [(0, 1), (1, 0)])
 
     def test_concurrent_duplicate_answer_advances_only_once(self):
         session = learning.start_or_resume()

@@ -1,3 +1,5 @@
+import uuid
+
 from django.contrib.sessions.models import Session
 from django.core.exceptions import ValidationError
 from django.db import DatabaseError, transaction
@@ -11,6 +13,7 @@ from django.views.decorators.http import require_http_methods, require_POST
 
 from .security import google_configured, local_test_login_enabled, owner_required
 from . import importing, learning
+from .duplicates import classify_rows
 from .forms import BulkWordActionForm, LearningSettingsForm, StudyActionForm, StudyAnswerForm, WordForm, WordImportForm
 from .models import LearningSettings, StudySession, Word, WordImport
 
@@ -73,9 +76,12 @@ def home(request):
 @require_http_methods(["GET", "POST"])
 def word_add(request):
     form = WordForm(request.POST if request.method == "POST" else None)
-    if request.method == "POST" and form.is_valid():
-        form.save()
-        return redirect("home")
+    if request.method == "POST":
+        with transaction.atomic():
+            learning.lock_preferences()
+            if form.is_valid():
+                form.save()
+                return redirect("home")
     return render(request, "cards/word_form.html", {"form": form})
 
 
@@ -124,10 +130,10 @@ def word_import_preview(request, pk):
     expired = batch.created_at < timezone.now() - importing.PREVIEW_LIFETIME
     if expired:
         return render(request, "cards/word_import_preview.html", {"expired": True}, status=410)
-    rows = batch.rows
-    add_count = len(rows)
+    rows = classify_rows(batch.rows)
+    add_count = sum(not row["duplicate"] for row in rows)
     return render(request, "cards/word_import_preview.html", {
-        "rows": rows, "add_count": add_count, "error": error,
+        "rows": rows, "add_count": add_count, "skipped_count": len(rows) - add_count, "error": error,
     })
 
 
@@ -135,16 +141,27 @@ def word_import_preview(request, pk):
 @require_http_methods(["GET", "POST"])
 def word_edit(request, pk):
     word = get_object_or_404(Word, pk=pk)
+    return_to_study = (request.POST if request.method == "POST" else request.GET).get("return_to") == "study"
     form = WordForm(request.POST if request.method == "POST" else None, instance=word)
-    if request.method == "POST" and form.is_valid():
+    if request.method == "POST":
         with transaction.atomic():
             learning.lock_preferences()
             word = get_object_or_404(Word, pk=pk)
-            for field in ["chunk", "meaning", "example"]:
-                setattr(word, field, form.cleaned_data[field])
-            word.save(update_fields=["chunk", "meaning", "example", "updated_at"])
-        return redirect(reverse("home") + "?progress=learned" if word.archived_at else "home")
-    return render(request, "cards/word_form.html", {"form": form, "word": word})
+            previously_showed_reverse = word.show_reverse_immediately
+            form = WordForm(request.POST, instance=word)
+            if form.is_valid():
+                # Save card content and display preference without changing learning progress.
+                word.save(update_fields=["chunk", "meaning", "example", "show_reverse_immediately", "updated_at"])
+                if previously_showed_reverse != word.show_reverse_immediately:
+                    session = learning.active_session()
+                    if session and session.queue and session.queue[0] == word.pk:
+                        session.revealed = word.show_reverse_immediately
+                        session.response_token = uuid.uuid4()
+                        session.save(update_fields=["revealed", "response_token"])
+                if return_to_study:
+                    return redirect("study")
+                return redirect(reverse("home") + "?progress=learned" if word.archived_at else "home")
+    return render(request, "cards/word_form.html", {"form": form, "word": word, "return_to_study": return_to_study})
 
 
 @owner_required
@@ -249,11 +266,13 @@ def study(request):
     if word:
         return render(request, "cards/study.html", {
             "study_session": session, "word": word, "remaining": len(session.queue),
+            "completed": max(0, session.total_words - len(session.queue)),
             "can_undo": learning.can_undo(session),
         })
     active_words = Word.objects.filter(archived_at__isnull=True)
     return render(request, "cards/study_waiting.html", {
         "study_session": session,
+        "remaining": 0, "completed": session.total_words,
         "next_word": active_words.order_by("due_at").first(),
         "can_undo": learning.can_undo(session),
     })
@@ -265,6 +284,7 @@ def study_status(request):
     session, word = learning.study_state()
     return JsonResponse({
         "response_token": str(session.response_token), "remaining": len(session.queue),
+        "total": session.total_words, "completed": max(0, session.total_words - len(session.queue)),
         "revealed": session.revealed, "can_undo": learning.can_undo(session),
     })
 

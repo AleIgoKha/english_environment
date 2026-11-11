@@ -111,6 +111,9 @@ def study_state():
     lock_preferences()
     session = ongoing_session()
     word = Word.objects.get(pk=session.queue[0]) if session.queue else None
+    if word and word.show_reverse_immediately and not session.revealed:
+        session.revealed = True
+        session.save(update_fields=["revealed"])
     return session, word
 
 

@@ -83,25 +83,39 @@ class CsvImportTests(TestCase):
         existing = Word.objects.create(chunk="Take your time", meaning="original", stage=5, archived_at=timezone.now())
         response = self.upload('front,back\n TAKE   YOUR TIME ,replacement\nnew chunk,first\nNEW CHUNK,second\n')
         url = response["Location"]
-        self.assertEqual(self.client.get(url).context["add_count"], 3)
-        self.assertNotContains(self.client.get(url), '<th scope="col">Action</th>')
+        preview = self.client.get(url)
+        self.assertEqual(preview.context["add_count"], 1)
+        self.assertEqual(preview.context["skipped_count"], 2)
+        self.assertContains(preview, "Skip duplicate", count=2)
         self.client.post(url)
-        self.assertEqual(Word.objects.count(), 4)
+        self.assertEqual(Word.objects.count(), 2)
         existing.refresh_from_db()
         self.assertEqual((existing.meaning, existing.stage), ("original", 5))
         self.assertIsNotNone(existing.archived_at)
         self.assertEqual(Word.objects.get(chunk="new chunk").meaning, "first")
 
-    def test_exact_duplicates_are_imported_without_changing_existing_word(self):
+    def test_duplicates_added_after_preview_are_skipped_at_confirmation(self):
         response = self.upload('Chunk\nhello\nhello\n')
+        self.assertEqual(self.client.get(response["Location"]).context["add_count"], 1)
         existing = Word.objects.create(chunk="hello", stage=2)
         self.client.post(response["Location"])
-        self.assertEqual(Word.objects.filter(chunk="hello").count(), 3)
+        self.assertEqual(Word.objects.filter(chunk="hello").count(), 1)
         existing.refresh_from_db()
         self.assertEqual(existing.stage, 2)
-        self.assertContains(self.client.get(response["Location"]), "Added 2 words")
+        self.assertContains(self.client.get(response["Location"]), "Added 0 words")
+        self.assertContains(self.client.get(response["Location"]), "Skipped 2 duplicates")
         self.client.post(response["Location"])
-        self.assertEqual(Word.objects.count(), 3)
+        self.assertEqual(Word.objects.count(), 1)
+
+    def test_reupload_unicode_and_whitespace_variants_are_duplicates(self):
+        response = self.upload('Obverse,Reverse\nhello,first\nＨＥＬＬＯ,second\n')
+        self.client.post(response["Location"])
+        self.assertEqual(Word.objects.count(), 1)
+        self.assertEqual(Word.objects.get().meaning, "first")
+        response = self.upload('Obverse,Reverse\n HELLO ,different\n')
+        self.client.post(response["Location"])
+        self.assertEqual(Word.objects.count(), 1)
+        self.assertContains(self.client.get(response["Location"]), "Skipped 1 duplicate")
 
     def test_invalid_csv_has_no_preview_or_partial_import(self):
         for content in ('', 'Meaning\nmissing chunk header\n', 'Chunk,Meaning\nvalid,ok\n,missing chunk\n',

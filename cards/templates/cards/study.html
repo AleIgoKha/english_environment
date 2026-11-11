@@ -7,15 +7,15 @@
 <div id="study-live" data-status-url="{% url 'study-status' %}" data-token="{{ study_session.response_token }}" data-revealed="{{ study_session.revealed|yesno:'true,false' }}" data-can-undo="{{ can_undo|yesno:'true,false' }}">
 <div class="study-progress">
   <a class="back-arrow" href="{% url 'home' %}" aria-label="Pause and return home"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M15 5l-7 7 7 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></a>
-  <span class="badge">{{ remaining }} left</span>
+  {% include 'cards/_study_progress.html' %}
 </div>
 <section class="study-card-group" aria-labelledby="study-chunk">
   <div class="panel study-card has-footer">
     <h2 id="study-chunk" class="study-chunk">{{ word.chunk }}</h2>
     {% if study_session.revealed %}
       <div class="study-answer">
-        {% if word.meaning %}<h3>Reverse</h3><p>{{ word.meaning|linebreaksbr }}</p>{% endif %}
-        {% if word.example %}<h3>Extra</h3><blockquote class="word-example">{{ word.example|linebreaksbr }}</blockquote>{% endif %}
+        {% if word.meaning %}<p>{{ word.meaning|linebreaksbr }}</p>{% endif %}
+        {% if word.example %}<hr><blockquote class="word-example">{{ word.example|linebreaksbr }}</blockquote>{% endif %}
         {% if not word.meaning and not word.example %}<p class="muted">No reverse or extra added. Check against your own answer.</p>{% endif %}
       </div>
     {% endif %}
@@ -36,7 +36,10 @@
     </form>
   {% endif %}
 </section>
-{% include 'cards/_study_undo.html' with undo_session=study_session %}
+<div class="study-tools">
+  {% include 'cards/_study_undo.html' with undo_session=study_session %}
+  <a class="button button-secondary study-edit" href="{% url 'word-edit' word.pk %}?return_to=study" aria-label="Edit card">Edit</a>
+</div>
 </div>
 {% endblock %}
 {% block scripts %}<script src="{% static 'cards/study.js' %}{% if local_asset_version %}?v={{ local_asset_version }}{% endif %}" defer></script>{% endblock %}

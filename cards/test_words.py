@@ -6,6 +6,7 @@ from django.urls import reverse
 from django.utils import timezone
 
 from .models import Word
+from . import learning
 from .security import auth_version
 from .tests import GOOGLE_SETTINGS
 
@@ -29,6 +30,54 @@ class WordManagementTests(TestCase):
         self.assertLessEqual(word.due_at, timezone.now())
         self.assertContains(self.client.get(reverse("home")), "take your time")
 
+    def test_add_and_edit_reject_duplicate_fronts_including_learned_cards(self):
+        learned = Word.objects.create(chunk="Take your time", stage=5, archived_at=timezone.now())
+        other = Word.objects.create(chunk="other card", meaning="keep")
+        for url in (reverse("word-add"), reverse("word-edit", args=[other.pk])):
+            response = self.client.post(url, {"chunk": " TAKE  YOUR\u00a0TIME ", "meaning": "replacement"})
+            self.assertContains(response, "A card with this Obverse already exists")
+        other.refresh_from_db()
+        learned.refresh_from_db()
+        self.assertEqual((other.chunk, other.meaning), ("other card", "keep"))
+        self.assertEqual(learned.stage, 5)
+        self.assertEqual(Word.objects.count(), 2)
+        response = self.client.post(reverse("word-edit", args=[learned.pk]),
+                                    {"chunk": "Take your time", "meaning": "updated"})
+        self.assertEqual(response.status_code, 302)
+        learned.refresh_from_db()
+        self.assertEqual(learned.meaning, "updated")
+
+    def test_practice_edit_returns_to_same_card_and_preserves_session(self):
+        word = Word.objects.create(chunk="before", stage=2)
+        Word.objects.create(chunk="next")
+        session = learning.start_or_resume()
+        edit_url = reverse("word-edit", args=[word.pk]) + "?return_to=study"
+        for revealed in (False, True):
+            if revealed:
+                learning.reveal(session.response_token)
+                session.refresh_from_db()
+            before = (session.queue, session.initial_stages, session.setbacks,
+                      session.response_token, session.revealed)
+            due_at = word.due_at
+            self.assertContains(self.client.get(reverse("study")), f'href="{edit_url}"')
+            edit = self.client.get(edit_url)
+            self.assertContains(edit, 'name="return_to" value="study"')
+            self.assertContains(edit, "Back to practice")
+            self.assertContains(edit, "Cancel")
+            response = self.client.post(edit_url, {"chunk": "corrected", "meaning": "new reverse", "return_to": "study"})
+            self.assertRedirects(response, reverse("study"))
+            session.refresh_from_db()
+            word.refresh_from_db()
+            self.assertEqual((session.queue, session.initial_stages, session.setbacks,
+                              session.response_token, session.revealed), before)
+            self.assertEqual((word.chunk, word.meaning, word.stage, word.due_at),
+                             ("corrected", "new reverse", 2, due_at))
+        invalid = self.client.post(edit_url, {"chunk": "", "return_to": "study"})
+        self.assertContains(invalid, 'name="return_to" value="study"')
+        self.assertTrue(invalid.context["form"].errors)
+        response = self.client.post(edit_url, {"chunk": "corrected", "return_to": "https://example.test"})
+        self.assertRedirects(response, reverse("home"))
+
     def test_add_all_fields_persists_multiline_and_unicode_content(self):
         values = {"chunk": "keep in mind", "meaning": "помнить\nremember", "example": "Keep this in mind.\nIt matters."}
         self.client.post(reverse("word-add"), values)
@@ -38,6 +87,42 @@ class WordManagementTests(TestCase):
         reopened = Client()
         reopened.cookies = self.client.cookies.copy()
         self.assertContains(reopened.get(reverse("home")), "Keep this in mind.")
+
+    def test_reverse_switch_defaults_off_and_saves_per_card(self):
+        form = self.client.get(reverse("word-add")).context["form"]
+        self.assertFalse(form["show_reverse_immediately"].value())
+        self.client.post(reverse("word-add"), {"chunk": "default hidden"})
+        self.assertFalse(Word.objects.get().show_reverse_immediately)
+        self.client.post(reverse("word-add"), {"chunk": "always visible", "show_reverse_immediately": "on"})
+        word = Word.objects.get(chunk="always visible")
+        self.assertTrue(word.show_reverse_immediately)
+        edit = self.client.get(reverse("word-edit", args=[word.pk]))
+        self.assertTrue(edit.context["form"]["show_reverse_immediately"].value())
+
+    def test_toggling_reverse_during_practice_applies_immediately(self):
+        word = Word.objects.create(chunk="test phrase", meaning="answer", stage=2)
+        session = learning.start_or_resume()
+        original_queue = list(session.queue)
+        original_due = word.due_at
+        edit_url = reverse("word-edit", args=[word.pk])
+        for enabled in (True, False):
+            old_token = session.response_token
+            data = {"chunk": word.chunk, "meaning": word.meaning, "return_to": "study"}
+            if enabled:
+                data["show_reverse_immediately"] = "on"
+            response = self.client.post(edit_url, data, follow=True)
+            session.refresh_from_db()
+            word.refresh_from_db()
+            self.assertEqual(word.show_reverse_immediately, enabled)
+            self.assertEqual(session.revealed, enabled)
+            self.assertNotEqual(session.response_token, old_token)
+            self.assertEqual(session.queue, original_queue)
+            self.assertEqual((word.stage, word.due_at), (2, original_due))
+            if enabled:
+                self.assertContains(response, 'class="study-answer"')
+            else:
+                self.assertNotContains(response, 'class="study-answer"')
+                self.assertContains(response, "Reveal answer")
 
     def test_missing_or_whitespace_chunk_is_rejected_without_losing_other_fields(self):
         for chunk in ["", "   \n\t"]:

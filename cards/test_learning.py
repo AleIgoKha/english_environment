@@ -80,10 +80,42 @@ class LearningTests(TestCase):
         word = Word.objects.create(chunk="hello")
         session = learning.start_or_resume()
         learning.reveal(session.response_token)
-        self.assertContains(self.client.get(reverse("study")), "No meaning or example added.")
+        self.assertContains(self.client.get(reverse("study")), "No reverse or extra added.")
         self.respond()
         word.refresh_from_db()
         self.assertEqual(word.stage, 1)
+
+    def test_show_reverse_immediately_can_be_answered_without_reveal(self):
+        word = Word.objects.create(chunk="visible", meaning="answer text", example="extra text",
+                                   show_reverse_immediately=True)
+        next_word = Word.objects.create(chunk="next", meaning="keep hidden")
+        response = self.client.post(reverse("study-start"), follow=True)
+        self.assertContains(response, "answer text")
+        self.assertContains(response, "extra text")
+        self.assertNotContains(response, "Reveal answer")
+        self.assertContains(response, "Don't know")
+        session = learning.active_session()
+        self.client.post(reverse("study-answer"), {"response_token": session.response_token, "answer": "know"})
+        word.refresh_from_db()
+        self.assertEqual(word.stage, 1)
+        response = self.client.get(reverse("study"))
+        self.assertContains(response, next_word.chunk)
+        self.assertNotContains(response, "keep hidden")
+        self.assertContains(response, "Reveal answer")
+        self.assertFalse(next_word.show_reverse_immediately)
+
+    def test_automatic_reverse_is_applied_after_repeat_and_undo(self):
+        word = Word.objects.create(chunk="visible", meaning="answer text", show_reverse_immediately=True)
+        session, _ = learning.study_state()
+        learning.answer(session.response_token, "repeat")
+        session, _ = learning.study_state()
+        self.assertTrue(session.revealed)
+        learning.answer(session.response_token, "know")
+        session.refresh_from_db()
+        learning.undo(session.response_token)
+        session, current_word = learning.study_state()
+        self.assertEqual(current_word.pk, word.pk)
+        self.assertTrue(session.revealed)
 
     def test_know_advances_once_and_is_not_due_again_the_same_day(self):
         word = Word.objects.create(chunk="remember")

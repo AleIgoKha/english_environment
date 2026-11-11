@@ -10,6 +10,7 @@ from django.views.decorators.debug import sensitive_variables
 
 from . import learning
 from .forms import WordForm
+from .duplicates import classify_rows
 from .models import Word, WordImport
 
 MAX_BYTES = 2 * 1024 * 1024
@@ -54,7 +55,7 @@ def parse_csv(upload):
                 raise ValidationError(f"Row {reader.line_num} has too many columns. Put text containing commas inside quotes.")
             values += [""] * (len(fields) - len(values))
             data = {field: value for field, value in zip(fields, values) if field}
-            form = WordForm(data)
+            form = WordForm(data, check_duplicates=False)
             if not form.is_valid():
                 details = " ".join(f"{form.fields[field].label}: {' '.join(errors)}" for field, errors in form.errors.items())
                 raise ValidationError(f"Row {reader.line_num}: {details}")
@@ -76,11 +77,12 @@ def confirm_import(import_id):
         return batch
     if batch.created_at < timezone.now() - PREVIEW_LIFETIME:
         raise ValidationError("This preview expired. Upload the CSV again.")
-    rows = batch.rows
+    # Check again under the shared lock: the deck may have changed since preview.
+    rows = [row for row in classify_rows(batch.rows) if not row["duplicate"]]
     new_words = [Word(chunk=row["chunk"], meaning=row["meaning"], example=row["example"]) for row in rows]
     Word.objects.bulk_create(new_words)
     batch.added_count = len(new_words)
-    batch.skipped_count = 0
+    batch.skipped_count = len(batch.rows) - len(new_words)
     batch.imported_at = timezone.now()
     batch.rows = []
     batch.save(update_fields=["added_count", "skipped_count", "imported_at", "rows"])
