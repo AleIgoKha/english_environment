@@ -32,12 +32,12 @@ class McpTests(TestCase):
     def call(self, phrases):
         return self.rpc("tools/call", {"name": "check_existing_cards", "arguments": {"phrases": phrases}})
 
-    def test_disabled_and_authentication_fail_closed_without_database_queries(self):
+    def test_disabled_and_authentication_fail_closed_without_card_queries(self):
         for value in ("", "bad-config"):
-            with override_settings(CARDY_MCP_TOKEN_SHA256=value), self.assertNumQueries(0):
+            with override_settings(CARDY_MCP_TOKEN_SHA256=value), self.assertNumQueries(1):
                 self.assertEqual(self.rpc("tools/list").status_code, 404)
         for header in ("", "Bearer wrong", f"Basic {TEST_TOKEN}", f"Bearer {TEST_TOKEN}x"):
-            with self.assertNumQueries(0):
+            with self.assertNumQueries(1):
                 response = self.rpc("tools/list", HTTP_AUTHORIZATION=header)
             self.assertEqual(response.status_code, 401)
             self.assertIn("Bearer", response["WWW-Authenticate"])
@@ -86,7 +86,7 @@ class McpTests(TestCase):
         Word.objects.create(chunk="unrequested private card")
         phrases = [" TAKE  YOUR\u00a0TIME ", "ＨＥＬＬＯ", "new phrase", "a paraphrase"]
         before = list(Word.objects.values())
-        with self.assertNumQueries(1):
+        with self.assertNumQueries(2):
             response = self.call(phrases)
         result = response.json()["result"]
         data = result["structuredContent"]
@@ -104,7 +104,7 @@ class McpTests(TestCase):
 
     def test_input_bounds_and_errors(self):
         for phrases in ([], [""], ["   "], [None], [1], "hello", ["x" * 301], ["hello"] * 101):
-            with self.subTest(phrases=str(phrases)[:40]), self.assertNumQueries(0):
+            with self.subTest(phrases=str(phrases)[:40]), self.assertNumQueries(1):
                 self.assertEqual(self.call(phrases).json()["error"]["code"], -32602)
         self.assertEqual(self.call(["x" * 300] * 100).status_code, 200)
         self.assertEqual(self.rpc("tools/call", {"name": "delete_card"}).json()["error"]["code"], -32602)

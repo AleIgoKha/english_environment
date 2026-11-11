@@ -16,8 +16,9 @@ from django.urls import reverse
 
 from . import importing, learning
 from .mcp_cards import add_cards
+from .mcp_credentials import credential_hashes, rotate_token
 import uuid
-from .models import LearningSettings, StudyReview, StudySession, Word, WordImport
+from .models import LearningSettings, McpBearerCredential, StudyReview, StudySession, Word, WordImport
 from .tests import GOOGLE_SETTINGS
 from scripts import apply_railway_config
 
@@ -145,6 +146,13 @@ class PostgresConcurrencyTests(TransactionTestCase):
         results = self.run_together(lambda: add_cards(arguments))
         self.assertEqual(Word.objects.filter(chunk="concurrent MCP phrase").count(), 1)
         self.assertEqual(sorted(result["replayed"] for result in results), [False, True])
+
+    def test_concurrent_token_generation_leaves_one_valid_role_token(self):
+        import hashlib
+        tokens = self.run_together(lambda: rotate_token("read"))
+        self.assertEqual(McpBearerCredential.objects.count(), 1)
+        hashes = [hashlib.sha256(value.removeprefix("Bearer ").encode()).hexdigest() for value in tokens]
+        self.assertEqual(sum(value == credential_hashes()["read"] for value in hashes), 1)
 
     def test_concurrent_imports_with_matching_fronts_add_one_card(self):
         rows = [{"chunk": "same phrase", "meaning": "first", "example": ""}]

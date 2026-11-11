@@ -30,6 +30,7 @@ urlpatterns = [
     path("archive/", views.archive, name="archive"),
     path("settings/", views.learning_settings, name="learning-settings"),
     path("settings/saved/", views.learning_settings, name="learning-settings-saved"),
+    path("settings/mcp-token/<str:role>/", views.mcp_token_generate, name="mcp-token-generate"),
     path("study/start/", views.study_start, name="study-start"),
     path("study/", views.study, name="study"),
     path("study/reveal/", views.study_reveal, name="study-reveal"),

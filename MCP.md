@@ -79,7 +79,33 @@ credential cannot call the read tool, and the read credential cannot add cards.
 
 ## Legacy bearer access
 
-With OAuth disabled, the endpoint is **disabled by default**. Set `CARDY_MCP_TOKEN_SHA256` to the
+### Generate tokens in Settings
+
+The signed-in owner can open **Settings → Connect Codex** and generate or
+regenerate a read or write token directly on any device. Copy the complete
+`Bearer …` value into Codex's **Headers → Value**, with `Authorization` in
+**Headers → Key**. The guide follows the UI's field order and requires no token
+files. Keep write-tool approval set to **Ask / Prompt**.
+
+Token generation is CSRF-protected POST only. Real owner credentials require
+HTTPS; the separately configured local test account can generate credentials
+for its own test database on the private network. The guide shows local names
+and the local MCP URL for that account. Production rejects local test sign-in.
+
+Migration 0010 adds a role-keyed hash-only credential table. Raw tokens are
+returned once in a no-store response and held only in the current page, never
+in the database, session, URL, or browser storage. Reloading loses the value;
+regenerate if it was not copied. Regeneration invalidates the previous token
+for that role across all app workers and devices. It does not rotate the other
+role or OAuth connections. Owner authentication configuration changes invalidate
+generated tokens. Generated records override the corresponding environment
+credential, including after owner changes; old file tokens do not regain access.
+Existing environment credentials work until replaced through Settings.
+
+The existing setup scripts and file-based checks below are for legacy credentials;
+they cannot recover or override a token generated in Settings.
+
+With OAuth disabled and no generated tokens, the endpoint is **disabled by default**. Set `CARDY_MCP_TOKEN_SHA256` to the
 lowercase hexadecimal SHA-256 digest of a cryptographically random bearer
 token. Use at least 32 random bytes when generating the token. Store only its
 digest on the server; keep the original token in private client secret settings.
@@ -87,7 +113,8 @@ Never put the token in prompts, repository files, URLs, screenshots, or logs.
 
 Each legacy call must send `Authorization: Bearer <private token>`. Browser login and
 local test sign-in do not grant MCP access. Use a separate token from Django and
-Google credentials. Changing/removing the server digest revokes the old token.
+Google credentials. Changing/removing the environment digest revokes that legacy
+token when no generated record overrides it.
 Missing or malformed configuration returns 404; invalid credentials return 401.
 All responses use `Cache-Control: no-store`. Requests with a foreign Origin are
 rejected, and Django's Host validation still applies. Only this token-protected

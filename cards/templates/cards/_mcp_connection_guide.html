@@ -1,0 +1,19 @@
+<ol class="mcp-steps">
+  <li>{% include 'cards/_copy_field.html' with copy_id=prefix|add:'-name' label='Name' value=connection_name %}</li>
+  <li><strong>Type</strong> — select <strong>Streamable HTTP</strong>.</li>
+  <li>{% include 'cards/_copy_field.html' with copy_id=prefix|add:'-url' label='URL' value=mcp_url %}</li>
+  <li><strong>Bearer token env var</strong> — leave empty.</li>
+  <li>
+    <strong>Headers</strong> — add one header:
+    {% include 'cards/_copy_field.html' with copy_id=prefix|add:'-key' label='Key' value='Authorization' %}
+    <form method="post" action="{% url 'mcp-token-generate' role=role %}" class="mcp-token-form" data-token-target="{{ prefix }}-value" data-token-role="{{ role }}">
+      {% csrf_token %}
+      <button type="submit" class="button button-secondary">{% if role in mcp_generated_roles %}Regenerate{% else %}Generate{% endif %} {{ role }} token</button>
+      <p class="field-help" role="status" aria-live="polite"></p>
+    </form>
+    {% include 'cards/_copy_field.html' with copy_id=prefix|add:'-value' label='Value' value='' placeholder='Generate a token, then copy this value' %}
+    <p>Click <strong>Copy</strong> and paste the complete value into <strong>Headers → Value</strong>. Nothing to replace or add.</p>
+  </li>
+  <li><strong>Headers from environment variables</strong> — leave both Key and Value empty.</li>
+  <li>Click <strong>Save</strong>.</li>
+</ol>

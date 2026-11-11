@@ -1,5 +1,6 @@
 import uuid
 
+from django.conf import settings
 from django.contrib.sessions.models import Session
 from django.core.exceptions import ValidationError
 from django.db import DatabaseError, transaction
@@ -9,6 +10,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.cache import never_cache
+from django.views.decorators.debug import sensitive_variables
 from django.views.decorators.http import require_http_methods, require_POST
 
 from .security import google_configured, local_test_login_enabled, owner_required
@@ -16,6 +18,8 @@ from . import importing, learning
 from .duplicates import classify_rows
 from .forms import BulkWordActionForm, LearningSettingsForm, StudyActionForm, StudyAnswerForm, WordForm, WordImportForm
 from .models import LearningSettings, StudySession, Word, WordImport
+from .models import McpBearerCredential
+from .mcp_credentials import rotate_token
 
 
 @never_cache
@@ -249,7 +253,33 @@ def learning_settings(request):
     return render(request, "cards/settings.html", {
         "form": form,
         "saved": request.method == "GET" and request.resolver_match.url_name == "learning-settings-saved",
+        "mcp_local_test": request.session.get("auth_kind") == "local-test",
+        "mcp_url": (request.build_absolute_uri(reverse("mcp"))
+                    if request.session.get("auth_kind") == "local-test"
+                    else settings.CARDY_PUBLIC_URL + reverse("mcp")),
+        "mcp_generated_roles": set(McpBearerCredential.objects.values_list("role", flat=True)),
     })
+
+
+@owner_required
+@require_POST
+@sensitive_variables()
+def mcp_token_generate(request, role):
+    if role not in ("read", "write"):
+        raise Http404
+    # Real credentials must travel over HTTPS. The isolated test account is
+    # already restricted to explicitly configured local/private addresses.
+    if not request.is_secure() and request.session.get("auth_kind") != "local-test":
+        return JsonResponse({"error": "Open Cardy over HTTPS to generate a token."}, status=403)
+    try:
+        authorization = rotate_token(role)
+    except DatabaseError:
+        return JsonResponse({"error": "Could not generate the token. Please try again."}, status=503)
+    response = JsonResponse({"authorization": authorization})
+    response["Cache-Control"] = "no-store, private"
+    response["Pragma"] = "no-cache"
+    response["Referrer-Policy"] = "no-referrer"
+    return response
 
 
 @owner_required

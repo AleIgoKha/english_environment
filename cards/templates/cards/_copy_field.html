@@ -1,0 +1,7 @@
+<div class="mcp-copy-field">
+  <label for="{{ copy_id }}">{{ label }}</label>
+  <div class="mcp-copy-row">
+    <input id="{{ copy_id }}" type="text" value="{{ value }}" placeholder="{{ placeholder|default:'' }}" readonly spellcheck="false" autocapitalize="off" autocomplete="off">
+    <button type="button" class="mcp-copy-button" data-copy-target="{{ copy_id }}" aria-label="Copy {{ label }}" {% if not value %}disabled{% endif %}>Copy</button>
+  </div>
+</div>

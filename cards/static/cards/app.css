@@ -159,6 +159,19 @@ input[aria-invalid="true"], textarea[aria-invalid="true"] { border-color: #a13f6
 .card-switch input:focus-visible + .switch-track { outline: 3px solid var(--purple); outline-offset: 3px; }
 .optional-label, .field-help { color: var(--muted); font-size: 12px; font-weight: 400; }
 .field-help { margin: 6px 0 0; }
+.mcp-guide { margin-top: 20px; font-size: 14px; overflow-wrap: anywhere; }
+.mcp-guide > summary { cursor: pointer; color: var(--purple-dark); font-size: 18px; font-weight: 650; }
+.mcp-guide code { font-size: .9em; }
+.mcp-guide > p:last-child { margin-bottom: 0; }
+.mcp-steps { padding-left: 22px; }
+.mcp-steps > li + li { margin-top: 12px; }
+.mcp-copy-field { margin: 12px 0; }
+.mcp-copy-field label { margin-bottom: 5px; }
+.mcp-copy-row { display: flex; align-items: stretch; gap: 8px; min-width: 0; }
+.mcp-copy-row input { min-width: 0; min-height: 44px; padding: 10px; font-family: monospace; font-size: 13px; }
+.mcp-copy-button { flex-shrink: 0; min-width: 64px; min-height: 44px; padding: 8px; border: 1px solid var(--border); border-radius: 10px; background: var(--lavender); color: var(--purple-dark); font-size: 13px; }
+.mcp-copy-button:disabled, .mcp-token-form button:disabled { opacity: .55; cursor: default; }
+.mcp-token-form { margin-top: 12px; }
 .errorlist { margin: 6px 0 0; padding-left: 18px; color: #9b3457; font-size: 13px; }
 .form-actions { display: grid; gap: 12px; }
 .form-actions.word-edit-actions { grid-template-columns: repeat(2, minmax(0, 1fr)); }

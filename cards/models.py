@@ -64,6 +64,15 @@ class McpCardBatch(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
 
+class McpBearerCredential(models.Model):
+    """A generated role token overrides its legacy environment credential."""
+
+    role = models.CharField(max_length=5, primary_key=True, choices=[("read", "Read"), ("write", "Write")])
+    token_hash = models.CharField(max_length=64)
+    owner_version = models.CharField(max_length=64)
+    updated_at = models.DateTimeField(auto_now=True)
+
+
 class McpOAuthClient(ClientMixin, models.Model):
     client_id = models.CharField(max_length=100, unique=True)
     client_name = models.CharField(max_length=100)

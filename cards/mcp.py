@@ -15,6 +15,7 @@ from django.views.decorators.debug import sensitive_variables
 
 from .duplicates import existing_obverses, obverse_key
 from .mcp_cards import ADD_TOOL, add_cards
+from .mcp_credentials import credential_hashes
 from . import oauth_server
 
 VERSIONS = ("2025-03-26", "2025-06-18", "2025-11-25")
@@ -75,8 +76,11 @@ def auth_required(request_id, scope):
 
 @sensitive_variables()
 def dispatch(request):
-    expected_hash = settings.CARDY_MCP_TOKEN_SHA256
-    write_hash = settings.CARDY_MCP_WRITE_TOKEN_SHA256
+    try:
+        hashes = credential_hashes()
+    except DatabaseError:
+        return HttpResponse(status=503)
+    expected_hash, write_hash = hashes["read"], hashes["write"]
     # A missing/malformed configuration never opens anonymous access.
     oauth_enabled = settings.CARDY_OAUTH_ENABLED
     if not oauth_enabled and not valid_digest(expected_hash) and not valid_digest(write_hash):
