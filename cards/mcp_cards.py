@@ -18,7 +18,7 @@ ADD_TOOL = {
         "Add 1–10 cards only after the user approves these exact Obverse, Reverse and Extra values "
         "in the current chat. Never call from a scheduled/background run. Keep batch_id unchanged "
         "when retrying the same approved batch. Existing Obverses (including Learned) are skipped, "
-        "never overwritten. Requires the separate add-cards credential."
+        "never overwritten. Requires cards:add OAuth permission or the separate add-cards credential."
     ),
     "inputSchema": {
         "type": "object", "additionalProperties": False,

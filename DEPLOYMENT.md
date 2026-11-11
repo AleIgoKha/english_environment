@@ -76,6 +76,13 @@ Open the production HTTPS URL in Safari, log in, and choose **Share → Add to H
 
 ## Troubleshooting and recovery
 
+For the private ChatGPT/Codex Cardy plugin, apply migration 0009 and enable
+`CARDY_OAUTH_ENABLED=true` with `CARDY_PUBLIC_URL` set to the service's exact
+HTTPS origin. Keep existing Google and MCP credential variables. See [MCP.md](MCP.md)
+for the consent flow, private package, and non-mutating live verification.
+Publishing code and creating the private plugin do not sign the owner in;
+real host linking remains a separate verification step.
+
 - **Railway cannot access the GitHub repo:** grant its GitHub App access to `AleIgoKha/english_environment`, then reconnect the service source to `main`.
 - **Deployment readiness fails:** check deployment logs for missing variables or migration errors. `/health/` intentionally hides database details. Do not print the variable list or database URL into shared logs.
 - **HTTPS redirect loop / CSRF error:** verify the generated domain variables, trusted origins, and Railway proxy settings. Do not disable CSRF or secure cookies to bypass the error.

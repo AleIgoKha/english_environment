@@ -16,7 +16,7 @@ def main():
     sys.path.insert(0, str(root))
     os.environ["DJANGO_SETTINGS_MODULE"] = "config.test_settings"
     from django.core.management import execute_from_command_line
-    execute_from_command_line([sys.argv[0], "test", "cards.test_mcp_client", "--settings=config.test_settings"])
+    execute_from_command_line([sys.argv[0], "test", "cards.test_mcp_client", "cards.test_oauth_client", "--settings=config.test_settings"])
 
 
 if __name__ == "__main__":

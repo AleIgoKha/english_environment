@@ -1,8 +1,16 @@
 from django.urls import path
 
-from . import auth_views, mcp, views
+from . import auth_views, mcp, oauth_server, views
 
 urlpatterns = [
+    path(".well-known/oauth-authorization-server", oauth_server.authorization_metadata),
+    path(".well-known/oauth-protected-resource", oauth_server.resource_metadata),
+    path(".well-known/oauth-protected-resource/mcp", oauth_server.resource_metadata),
+    path(".well-known/oauth-protected-resource/mcp/", oauth_server.resource_metadata),
+    path("oauth/register/", oauth_server.register, name="oauth-register"),
+    path("oauth/authorize/", oauth_server.authorize, name="oauth-authorize"),
+    path("oauth/token/", oauth_server.token, name="oauth-token"),
+    path("oauth/revoke/", oauth_server.revoke, name="oauth-revoke"),
     path("mcp/", mcp.endpoint, name="mcp"),
     path("health/", views.health, name="health"),
     path("", views.home, name="home"),

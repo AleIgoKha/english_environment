@@ -1,10 +1,53 @@
 # Cardy MCP
 
 The MCP endpoint is `/mcp/` (keep the trailing slash). It runs inside
-the existing Django/Gunicorn app, with no additional runtime dependencies or
-deployment process. It uses stateless Streamable HTTP with JSON responses;
-there are no SSE streams or arbitrary SQL access. Read and add-cards credentials
-are separate; the scheduled task uses only the read connection.
+the existing Django/Gunicorn app. It uses stateless Streamable HTTP with JSON
+responses; there are no SSE streams or arbitrary SQL access. OAuth uses the
+already-installed Authlib library and the existing owner's Google sign-in.
+Legacy separate read and write bearer credentials remain supported.
+
+## ChatGPT and Codex plugin
+
+Set `CARDY_OAUTH_ENABLED=true` on the deployed service and
+`CARDY_PUBLIC_URL=https://english-environment-production.up.railway.app`.
+The latter is the exact HTTPS issuer origin, without a path or trailing slash.
+The existing Google client and callback stay unchanged. Migration 0009 creates
+OAuth tables without changing cards or study progress.
+
+The private package sources are in `integrations/cardy-plugin`. Build its archive
+with `.\.venv\Scripts\python.exe scripts/build_cardy_plugin.py` from this repository;
+it copies the two canonical skills and icon and writes an ignored `.local/` ZIP.
+Install the private plugin through its account link, then select Connect and sign
+in as the Cardy owner. Complete the connection in each host if requested. No
+repository clone, Python, or pasted bearer token is required on the Mac.
+
+OAuth provides discovery, dynamic public-client registration, authorization-code
+flow with mandatory S256 PKCE, exact registered redirects, resource binding,
+scope checks, and issuer identification. Only the stable ChatGPT callback, its
+legacy callback-ID form, and explicit-port loopback callbacks can register.
+Only an owner Google browser session can consent; local test sign-in cannot.
+Consent is CSRF-protected and bound to the exact authorization query.
+Codes last five minutes and are single-use. Access tokens last 30 minutes;
+refresh tokens rotate with replay-family revocation and a 14-day family lifetime.
+Only credential hashes are stored. `/oauth/revoke/` revokes a matching client's
+token family. Disabling OAuth revokes access while disabled; changing the owner
+authentication configuration invalidates old credentials as well.
+
+Public initialization and tool discovery contain no card data. Card calls need
+OAuth `cards:read` or `cards:add`. Legacy credentials retain their separate roles.
+The two bundled skills require explicit approval of the exact cards and target
+deck in the current chat before adding. Scheduled reviews never invoke writes.
+Connection consent alone does not approve cards. Tool permission prompts are
+controlled by the host; do not configure automatic approval for `add_cards`.
+The server's `approved: true` field is not cryptographic evidence of a user message;
+the chat skill and host permission flow enforce that interaction requirement.
+
+The plugin grants access to Cardy, not to other conversations. Codex reviews can
+use available local chat tools; ChatGPT can review only messages it can actually
+access or the user supplies. Always report coverage gaps.
+
+See [OpenAI OAuth guidance](https://developers.openai.com/plugins/build/auth) and
+[plugin packaging](https://developers.openai.com/plugins/build/plugins).
 
 ## Tool
 
@@ -24,7 +67,7 @@ The scheduled task should check candidates before generating its suggestions and
 matches. CSV generation does not add cards or reserve phrases. Cardy's import
 check remains the final protection against duplicates added in the meantime.
 
-`add_cards` is exposed only with a separate `CARDY_MCP_WRITE_TOKEN_SHA256`
+`add_cards` requires OAuth `cards:add` or the separate `CARDY_MCP_WRITE_TOKEN_SHA256`
 credential. It accepts 1–10 cards (`obverse`, `reverse`, `extra`), `approved: true`,
 and a UUID `batch_id`. The chat skill requires the user to see and approve the
 exact batch; client configuration requests approval for the write tool. The
@@ -34,15 +77,15 @@ Retries of the same batch return its original counts; changing a batch requires
 a new ID and new approval. Existing cards are never overwritten. The write
 credential cannot call the read tool, and the read credential cannot add cards.
 
-## Private access
+## Legacy bearer access
 
-The endpoint is **disabled by default**. Set `CARDY_MCP_TOKEN_SHA256` to the
+With OAuth disabled, the endpoint is **disabled by default**. Set `CARDY_MCP_TOKEN_SHA256` to the
 lowercase hexadecimal SHA-256 digest of a cryptographically random bearer
 token. Use at least 32 random bytes when generating the token. Store only its
 digest on the server; keep the original token in private client secret settings.
 Never put the token in prompts, repository files, URLs, screenshots, or logs.
 
-Each call must send `Authorization: Bearer <private token>`. Browser login and
+Each legacy call must send `Authorization: Bearer <private token>`. Browser login and
 local test sign-in do not grant MCP access. Use a separate token from Django and
 Google credentials. Changing/removing the server digest revokes the old token.
 Missing or malformed configuration returns 404; invalid credentials return 401.
@@ -52,9 +95,9 @@ endpoint is exempt from browser CSRF checks; other routes retain CSRF protection
 
 Production clients must use HTTPS. The intended production URL after deployment
 is `https://english-environment-production.up.railway.app/mcp/`.
-This is a private Codex bearer-token integration, not an OAuth-enabled public
-plugin. Deployment, actual credentials, Mac connection, and scheduled-run access
-must be verified separately; implementing the endpoint does not configure them.
+Legacy connections are Codex-specific; use the private OAuth plugin for ChatGPT.
+Deployment, account connection, and scheduled-run access must be verified
+separately; implementing the endpoint does not configure them.
 
 ## Local-first setup and skills
 
@@ -68,8 +111,8 @@ With `--configure-codex`, it appends the two production connections to personal
 Codex settings. Tokens are read by `scripts/mcp_production_headers.py`, never
 stored in prompts or connection settings. Existing local settings are retained.
 
-`scripts/check_production_mcp.py` verifies HTTPS health, anonymous/incorrect-token
-rejection, initialization, discovery, and a read-only lookup. It discovers the
+`scripts/check_production_mcp.py` verifies HTTPS health, OAuth discovery, anonymous
+card-access/incorrect-token rejection, and an authenticated read-only lookup. It discovers the
 add tool but never calls it or changes the production deck.
 
 `scripts/setup_local_mcp.py --configure-codex` is deliberately restricted to the
@@ -95,7 +138,9 @@ installing these files.
 Supported versions: `2025-03-26`, `2025-06-18`, and `2025-11-25`. Initialization
 negotiates a supported version. Supported requests are `initialize`, `ping`,
 `tools/list`, and `tools/call`; notifications receive 202. GET and DELETE receive
-405 because no SSE stream or stateful session is used. Each credential exposes one tool, so
+405 for authenticated clients because no SSE stream or stateful session is used.
+Unauthenticated GET returns a 401 OAuth discovery challenge. Legacy credentials
+expose one tool; OAuth clients discover both tools with required scopes, so
 discovery needs no pagination. Requests are limited to 64 KiB.
 
 POST requests use `Content-Type: application/json` and
@@ -104,7 +149,7 @@ the negotiated `MCP-Protocol-Version` header. The implementation follows the
 [Streamable HTTP transport](https://modelcontextprotocol.io/specification/2025-11-25/basic/transports),
 [lifecycle](https://modelcontextprotocol.io/specification/2025-11-25/basic/lifecycle),
 and [tools](https://modelcontextprotocol.io/specification/2025-11-25/server/tools)
-specifications. Tool annotations reflect its read-only behavior; authentication
+specifications. Tool annotations distinguish reading and writing; authentication
 and validation are enforced on the server, as described in
 [OpenAI's MCP server guidance](https://developers.openai.com/plugins/build/mcp-server).
 

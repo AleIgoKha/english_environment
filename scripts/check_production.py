@@ -21,6 +21,8 @@ def main():
         "DATABASE_URL": "postgresql://test_fixture:test_fixture@127.0.0.1:55434/checks",
         "RAILWAY_PUBLIC_DOMAIN": "checks.example.invalid",
         "RAILWAY_ENVIRONMENT_ID": "local-settings-check",
+        "CARDY_OAUTH_ENABLED": "true",
+        "CARDY_PUBLIC_URL": "https://checks.example.invalid",
     })
     root = Path(__file__).resolve().parent.parent
     subprocess.run([sys.executable, "manage.py", "check", "--deploy", "--fail-level", "WARNING"], cwd=root, env=environment, check=True)

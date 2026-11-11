@@ -5,9 +5,11 @@ description: Add proposed writing cards to Cardy after the user explicitly appro
 
 # Add cards to Cardy
 
-Use the `cardy` MCP connection to check phrases and `cardy-add` to add cards to
-**production Cardy**. Only when the user explicitly chooses the local test deck,
-use `cardy-local` and `cardy-local-add` instead. Show the target deck in the batch
+Use the connected Cardy plugin's `check_existing_cards` and `add_cards` tools for
+**production Cardy**. Discover the actual available tools; do not guess a tool
+namespace. Legacy Codex connections are `cardy` (read) and `cardy-add` (write).
+Only when the user explicitly chooses the local test deck, use `cardy-local`
+and `cardy-local-add` instead. Show the target deck in the batch
 preview and obtain approval for that target; never silently switch decks or
 bypass a missing connection with SQL, shell commands, browser automation, or
 another credential.
@@ -33,7 +35,7 @@ After approval, check the Obverses through the read-only connection and omit
 existing matches. If the check fails, stop and report that duplication was not
 verified. Do not replace omitted cards without approval.
 
-Call `add_cards` on the approved deck's add connection with only the approved remaining cards,
+Call the approved deck's `add_cards` tool with only the approved remaining cards,
 `approved: true`, and a fresh UUID `batch_id`. Preserve the exact request and UUID
 when retrying after a timeout; do not create a new ID to work around an uncertain
 result. Respect the tool's approval prompt. Never claim success from submission

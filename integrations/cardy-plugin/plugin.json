@@ -1,0 +1,21 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "cardy",
+  "version": "0.1.0",
+  "description": "Suggest useful writing cards, check for duplicates, and add only the exact batch approved in the current chat.",
+  "author": { "name": "Alexei Harcenco" },
+  "extensions": {
+    "com.openai": {
+      "interface": {
+        "displayName": "Cardy",
+        "shortDescription": "Learn from your writing",
+        "longDescription": "Find up to ten useful writing lessons in accessible messages and check them against your Cardy deck. Review and explicitly approve the exact cards in the chat before adding them. Scheduled reviews only suggest cards.",
+        "developerName": "Alexei Harcenco",
+        "category": "Productivity",
+        "logo": "./assets/icon.svg",
+        "composerIcon": "./assets/icon.svg",
+        "defaultPrompt": "Suggest useful writing cards from my messages. Check duplicates and wait for my approval before adding anything."
+      }
+    }
+  }
+}

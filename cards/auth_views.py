@@ -78,12 +78,15 @@ def google_callback(request):
         subject = info.get("sub")
         if not isinstance(subject, str) or not subject or info.get("email_verified") is not True or email != settings.ALLOWED_GOOGLE_EMAIL:
             raise ValueError("Account not permitted")
+        oauth_query = request.session.pop("oauth_authorize_query", None)
         request.session.flush()
         request.session.update({
             "auth_kind": "google", "google_email": email,
             "google_subject": subject, "auth_version": auth_version(),
         })
         rotate_token(request)
+        if oauth_query and settings.CARDY_OAUTH_ENABLED:
+            return redirect(reverse("oauth-authorize") + "?" + oauth_query)
         return redirect("home")
     except (OAuthError, JoseError, RequestException, ValueError, KeyError, TypeError):
         return login_page(request, "Sign-in failed or this Google account isn't allowed. Please try again.", status=403)

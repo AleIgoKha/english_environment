@@ -16,8 +16,17 @@ def main():
     async def exercise():
         with anyio.fail_after(45):
             async with httpx.AsyncClient(timeout=15, trust_env=False, follow_redirects=False) as client:
-                anonymous = await client.post(url, json={"jsonrpc": "2.0", "id": 1, "method": "tools/list"})
-                assert anonymous.status_code == 401, "Production MCP must reject anonymous calls."
+                headers = {"Accept": "application/json, text/event-stream"}
+                metadata = await client.get(url.replace("/mcp/", "/.well-known/oauth-protected-resource"))
+                assert metadata.status_code == 200 and metadata.json()["resource"] == url
+                anonymous = await client.post(url, headers=headers,
+                    json={"jsonrpc": "2.0", "id": 1, "method": "tools/list"})
+                assert anonymous.status_code == 200
+                assert {tool["name"] for tool in anonymous.json()["result"]["tools"]} == {"check_existing_cards", "add_cards"}
+                denied = await client.post(url, headers=headers, json={"jsonrpc": "2.0", "id": 2,
+                    "method": "tools/call", "params": {"name": "check_existing_cards", "arguments": {"phrases": ["hello"]}}})
+                assert denied.json()["result"]["isError"]
+                assert "mcp/www_authenticate" in denied.json()["result"]["_meta"]
                 wrong = await client.post(url, headers={"Authorization": "Bearer disposable-invalid-production-check-credential"},
                                           json={"jsonrpc": "2.0", "id": 1, "method": "tools/list"})
                 assert wrong.status_code == 401, "Production MCP must reject incorrect credentials."
@@ -41,7 +50,7 @@ def main():
                             else:
                                 assert not inventory.tools[0].annotations.readOnlyHint
                                 print("Production: separate Add cards connection verified by discovery; no write invoked.")
-            print("Production: health and rejection of anonymous/incorrect credentials verified.")
+            print("Production: health, OAuth discovery, public catalog, and rejection of anonymous data access/incorrect credentials verified.")
     anyio.run(exercise)
 
 

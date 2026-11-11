@@ -15,6 +15,7 @@ from django.views.decorators.debug import sensitive_variables
 
 from .duplicates import existing_obverses, obverse_key
 from .mcp_cards import ADD_TOOL, add_cards
+from . import oauth_server
 
 VERSIONS = ("2025-03-26", "2025-06-18", "2025-11-25")
 MAX_BYTES = 64 * 1024
@@ -59,20 +60,42 @@ def valid_digest(value):
     return len(value) == 64 and all(c in "0123456789abcdef" for c in value)
 
 
+def oauth_tool(tool, scope):
+    return {**tool, "securitySchemes": [{"type": "oauth2", "scopes": [scope]}],
+            "_meta": {"securitySchemes": [{"type": "oauth2", "scopes": [scope]}]}}
+
+
+def auth_required(request_id, scope):
+    value = oauth_server.challenge(scope, "insufficient_scope")
+    return JsonResponse({"jsonrpc": "2.0", "id": request_id, "result": {
+        "content": [{"type": "text", "text": "Connect Cardy with the required permission to continue."}],
+        "isError": True, "_meta": {"mcp/www_authenticate": [value]},
+    }})
+
+
 @sensitive_variables()
 def dispatch(request):
     expected_hash = settings.CARDY_MCP_TOKEN_SHA256
     write_hash = settings.CARDY_MCP_WRITE_TOKEN_SHA256
     # A missing/malformed configuration never opens anonymous access.
-    if not valid_digest(expected_hash) and not valid_digest(write_hash):
+    oauth_enabled = settings.CARDY_OAUTH_ENABLED
+    if not oauth_enabled and not valid_digest(expected_hash) and not valid_digest(write_hash):
         return HttpResponse(status=404)
     scheme, _, token = request.headers.get("Authorization", "").partition(" ")
     token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
-    can_read = valid_digest(expected_hash) and constant_time_compare(token_hash, expected_hash)
-    can_write = valid_digest(write_hash) and constant_time_compare(token_hash, write_hash)
-    if scheme.lower() != "bearer" or not 32 <= len(token) <= 256 or not (can_read or can_write):
+    credential_valid = scheme.lower() == "bearer" and 32 <= len(token) <= 256
+    can_read = credential_valid and valid_digest(expected_hash) and constant_time_compare(token_hash, expected_hash)
+    can_write = credential_valid and valid_digest(write_hash) and constant_time_compare(token_hash, write_hash)
+    legacy = can_read or can_write
+    if oauth_enabled and not legacy and credential_valid:
+        try:
+            scopes = oauth_server.access_scopes(token_hash)
+        except DatabaseError:
+            return HttpResponse(status=503)
+        can_read, can_write = "cards:read" in scopes, "cards:add" in scopes
+    if not (can_read or can_write) and (not oauth_enabled or request.headers.get("Authorization") or request.method != "POST"):
         response = HttpResponse(status=401)
-        response["WWW-Authenticate"] = 'Bearer realm="Cardy MCP"'
+        response["WWW-Authenticate"] = oauth_server.challenge() if oauth_enabled else 'Bearer realm="Cardy MCP"'
         return response
     # Force Django's Host validation even when no browser Origin is present.
     host = request.get_host()
@@ -132,10 +155,14 @@ def dispatch(request):
     elif method == "tools/list":
         if params.get("cursor"):
             return rpc_error(request_id, -32602, "This server has no further tool pages.")
-        result = {"tools": ([TOOL] if can_read else []) + ([ADD_TOOL] if can_write else [])}
+        result = {"tools": ([oauth_tool(TOOL, "cards:read"), oauth_tool(ADD_TOOL, "cards:add")]
+                            if oauth_enabled and not legacy else
+                            ([TOOL] if can_read else []) + ([ADD_TOOL] if can_write else []))}
     elif method == "tools/call":
         if params.get("name") == ADD_TOOL["name"]:
             if not can_write:
+                if oauth_enabled and not legacy:
+                    return auth_required(request_id, "cards:add")
                 return rpc_error(request_id, -32602, "This connection has read-only access.")
             try:
                 data = add_cards(params.get("arguments", {}))
@@ -152,6 +179,8 @@ def dispatch(request):
         if params.get("name") != TOOL["name"]:
             return rpc_error(request_id, -32602, "Unknown tool.")
         if not can_read:
+            if oauth_enabled and not legacy:
+                return auth_required(request_id, "cards:read")
             return rpc_error(request_id, -32602, "Use the read-only connection to check phrases.")
         arguments = params.get("arguments", {})
         if not isinstance(arguments, dict) or set(arguments) != {"phrases"}:
@@ -180,7 +209,7 @@ def dispatch(request):
 @csrf_exempt
 @sensitive_variables()
 def endpoint(request):
-    # CSRF exemption applies only here: every request requires a bearer token.
+    # Public protocol metadata is allowed with OAuth; card tools require a bearer.
     response = dispatch(request)
     response["Cache-Control"] = "no-store"
     response["Vary"] = "Authorization, Origin"

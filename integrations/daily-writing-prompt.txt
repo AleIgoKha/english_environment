@@ -4,7 +4,7 @@ including my annotation comments, and report any coverage gaps.
 
 Suggest up to 10 new writing cards total, prioritizing unclear meaning, repeated
 mistakes, and useful natural phrasing. Check candidate phrases against production
-Cardy through the read-only cardy MCP connection and exclude existing matches, including Learned
+Cardy through its read-only check_existing_cards tool and exclude existing matches, including Learned
 cards. If the connection fails, say duplication was not checked.
 
 Show a numbered list of the phrases to learn and a very short overview of the

@@ -1,0 +1,18 @@
+{% extends 'cards/base.html' %}
+{% block title %}Connect Cardy{% endblock %}
+{% block layout_class %}layout-form{% endblock %}
+{% block content %}
+<section class="panel form-panel">
+  <h1>Connect Cardy</h1>
+  <p><strong>{{ client_name }}</strong> is requesting access to your cards.</p>
+  <p class="muted">Return address: {{ redirect_host }}</p>
+  <p>This connection can check which phrases already exist{% if can_add %} and add cards{% endif %}.</p>
+  <p>Adding cards still requires your approval of the exact cards in the chat. Connecting does not approve a batch.</p>
+  <form method="post" class="form-actions">
+    {% csrf_token %}
+    <input type="hidden" name="consent_nonce" value="{{ nonce }}">
+    <button class="button button-primary" name="decision" value="allow" type="submit">Allow connection</button>
+    <button class="button button-secondary" name="decision" value="deny" type="submit">Cancel</button>
+  </form>
+</section>
+{% endblock %}

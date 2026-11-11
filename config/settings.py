@@ -1,6 +1,7 @@
 """Shared settings; production secrets must come from the environment."""
 import os
 from pathlib import Path
+from urllib.parse import urlsplit
 
 import dj_database_url
 from django.core.exceptions import ImproperlyConfigured
@@ -20,6 +21,18 @@ GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET", "").strip()
 ALLOWED_GOOGLE_EMAIL = os.environ.get("ALLOWED_GOOGLE_EMAIL", "").strip().lower()
 CARDY_MCP_TOKEN_SHA256 = os.environ.get("CARDY_MCP_TOKEN_SHA256", "").strip().lower()
 CARDY_MCP_WRITE_TOKEN_SHA256 = os.environ.get("CARDY_MCP_WRITE_TOKEN_SHA256", "").strip().lower()
+CARDY_OAUTH_ENABLED = os.environ.get("CARDY_OAUTH_ENABLED", "false").lower() == "true"
+CARDY_PUBLIC_URL = os.environ.get("CARDY_PUBLIC_URL", "https://english-environment-production.up.railway.app").rstrip("/")
+if CARDY_OAUTH_ENABLED:
+    public_url = urlsplit(CARDY_PUBLIC_URL)
+    if (public_url.scheme != "https" or not public_url.netloc or public_url.username or public_url.password
+            or public_url.path or public_url.query or public_url.fragment):
+        raise ImproperlyConfigured("CARDY_PUBLIC_URL must be an HTTPS origin without credentials, path, query or fragment.")
+AUTHLIB_OAUTH2_PROVIDER = {
+    "scopes_supported": ["cards:read", "cards:add"],
+    "refresh_token_generator": True,
+    "token_expires_in": {"authorization_code": 1800, "refresh_token": 1800},
+}
 LOCAL_TEST_LOGIN = os.environ.get("DJANGO_LOCAL_TEST_LOGIN", "false").lower() == "true"
 LOCAL_TEST_NETWORK = os.environ.get("LOCAL_TEST_NETWORK", "").strip()
 RAILWAY_ENVIRONMENT_ID = os.environ.get("RAILWAY_ENVIRONMENT_ID", "")
@@ -119,3 +132,4 @@ LOGGING = {
     "filters": {"oauth_query": {"()": "cards.logging.RedactOAuthQuery"}},
     "loggers": {"django.server": {"filters": ["oauth_query"]}},
 }
+LOGGING["loggers"]["authlib.oauth2"] = {"level": "WARNING"}
