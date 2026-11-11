@@ -1,0 +1,17 @@
+Use $cardy-daily-writing to review my messages from today across accessible Codex
+projects on this machine, using my local timezone. Read actual user messages,
+including my annotation comments, and report any coverage gaps.
+
+Suggest up to 10 new writing cards total, prioritizing unclear meaning, repeated
+mistakes, and useful natural phrasing. Check candidate phrases against production
+Cardy through the read-only cardy MCP connection and exclude existing matches, including Learned
+cards. If the connection fails, say duplication was not checked.
+
+Show a numbered list of the phrases to learn and a very short overview of the
+main issue. Save a private batch containing the exact proposed Obverse, Reverse,
+and Extra values and link it for review. Reverse must contain my exact previous
+wording and a better example; Extra stays blank.
+
+Do not add any cards or call write tools. Adding cards is a separate interactive
+action through $cardy-add-cards, after I review and approve the exact batch in
+the chat. Do not create or change schedules, modify projects, commit, or push.

@@ -63,12 +63,18 @@ Previews are private to the authenticated browser session, expire after 24 hours
 
 ## Configuration and security
 
+Optional read-only MCP access lets Codex check candidate phrases against the
+current deck before generating CSVs. It is disabled until a separate bearer-token
+digest is configured. See [MCP.md](MCP.md) for behavior, private access, and tests.
+
 | Variable | Purpose |
 | --- | --- |
 | `DJANGO_SECRET_KEY` | Random secret; mandatory, never commit it. |
 | `GOOGLE_CLIENT_ID` | Google Web application OAuth client ID. |
 | `GOOGLE_CLIENT_SECRET` | Google OAuth client secret. |
 | `ALLOWED_GOOGLE_EMAIL` | Permitted verified owner email. |
+| `CARDY_MCP_TOKEN_SHA256` | Optional SHA-256 digest of the read-only MCP bearer token; blank disables phrase checks. |
+| `CARDY_MCP_WRITE_TOKEN_SHA256` | Separate optional add-cards credential digest; blank disables add-cards access. |
 | `DJANGO_DEBUG` | `true` locally only; defaults to `false`. |
 | `DJANGO_LOCAL_TEST_LOGIN` | Explicit local test access; always `false` on Railway. |
 | `LOCAL_DEV_ADDRESS` | Local server address; defaults to `127.0.0.1:8000`. |

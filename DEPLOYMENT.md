@@ -42,6 +42,8 @@ Store all values in the app service's Railway environment variables:
 | `DJANGO_DEBUG` | `false` |
 | `DJANGO_ALLOWED_HOSTS` | `healthcheck.railway.app`; Railway's generated public domain is also added automatically. |
 | `PORT` | `8000` |
+| `CARDY_MCP_TOKEN_SHA256` | SHA-256 digest of the independent read-only MCP token; see `MCP.md`. |
+| `CARDY_MCP_WRITE_TOKEN_SHA256` | Separate add-cards token digest; writes require approval of exact cards and target deck. |
 
 `RAILWAY_PUBLIC_DOMAIN` and `RAILWAY_ENVIRONMENT_ID` are supplied by Railway. The app derives its public allowed host and trusted HTTPS origin from the domain. For a custom domain, add its hostname to `DJANGO_ALLOWED_HOSTS` and its full HTTPS origin to `DJANGO_CSRF_TRUSTED_ORIGINS`.
 

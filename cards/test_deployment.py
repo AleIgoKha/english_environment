@@ -15,6 +15,8 @@ from django.test import SimpleTestCase, TestCase, TransactionTestCase, override_
 from django.urls import reverse
 
 from . import importing, learning
+from .mcp_cards import add_cards
+import uuid
 from .models import LearningSettings, StudyReview, StudySession, Word, WordImport
 from .tests import GOOGLE_SETTINGS
 from scripts import apply_railway_config
@@ -135,6 +137,14 @@ class PostgresConcurrencyTests(TransactionTestCase):
         sessions = self.run_together(lambda: learning.start_or_resume().pk)
         self.assertEqual(sessions[0], sessions[1])
         self.assertEqual(StudySession.objects.count(), 1)
+
+    def test_concurrent_mcp_batch_retries_add_once(self):
+        arguments = {"batch_id": str(uuid.uuid4()), "approved": True, "cards": [
+            {"obverse": "concurrent MCP phrase", "reverse": "example", "extra": ""},
+        ]}
+        results = self.run_together(lambda: add_cards(arguments))
+        self.assertEqual(Word.objects.filter(chunk="concurrent MCP phrase").count(), 1)
+        self.assertEqual(sorted(result["replayed"] for result in results), [False, True])
 
     def test_concurrent_imports_with_matching_fronts_add_one_card(self):
         rows = [{"chunk": "same phrase", "meaning": "first", "example": ""}]

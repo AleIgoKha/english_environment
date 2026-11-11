@@ -53,6 +53,16 @@ class WordImport(models.Model):
     skipped_count = models.PositiveIntegerField(default=0)
 
 
+class McpCardBatch(models.Model):
+    """Text-free receipt so retrying an approved MCP batch cannot add it twice."""
+
+    id = models.UUIDField(primary_key=True, editable=False)
+    payload_hash = models.CharField(max_length=64)
+    added_count = models.PositiveIntegerField(default=0)
+    skipped_count = models.PositiveIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+
 class StudySession(models.Model):
     """The queue and per-word baselines survive browser closure and restarts."""
 

@@ -18,6 +18,8 @@ DEBUG = os.environ.get("DJANGO_DEBUG", "false").lower() == "true"
 GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "").strip()
 GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET", "").strip()
 ALLOWED_GOOGLE_EMAIL = os.environ.get("ALLOWED_GOOGLE_EMAIL", "").strip().lower()
+CARDY_MCP_TOKEN_SHA256 = os.environ.get("CARDY_MCP_TOKEN_SHA256", "").strip().lower()
+CARDY_MCP_WRITE_TOKEN_SHA256 = os.environ.get("CARDY_MCP_WRITE_TOKEN_SHA256", "").strip().lower()
 LOCAL_TEST_LOGIN = os.environ.get("DJANGO_LOCAL_TEST_LOGIN", "false").lower() == "true"
 LOCAL_TEST_NETWORK = os.environ.get("LOCAL_TEST_NETWORK", "").strip()
 RAILWAY_ENVIRONMENT_ID = os.environ.get("RAILWAY_ENVIRONMENT_ID", "")

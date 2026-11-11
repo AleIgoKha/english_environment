@@ -1,8 +1,9 @@
 from django.urls import path
 
-from . import auth_views, views
+from . import auth_views, mcp, views
 
 urlpatterns = [
+    path("mcp/", mcp.endpoint, name="mcp"),
     path("health/", views.health, name="health"),
     path("", views.home, name="home"),
     path("login/", auth_views.login, name="login"),

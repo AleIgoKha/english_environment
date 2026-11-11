@@ -9,5 +9,9 @@ os.environ["LOCAL_TEST_NETWORK"] = ""
 
 from .settings import *  # noqa: E402,F403
 
+# Tests must never inherit real local MCP credentials.
+CARDY_MCP_TOKEN_SHA256 = ""
+CARDY_MCP_WRITE_TOKEN_SHA256 = ""
+
 DATABASES = {"default": {"ENGINE": "django.db.backends.sqlite3", "NAME": ":memory:"}}
 ALLOWED_HOSTS = ["testserver", "localhost"]
