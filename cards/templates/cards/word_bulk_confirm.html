@@ -5,10 +5,15 @@
 {% block content %}
 <section class="page-heading">
   {% if words|length > 1 %}
-    <h1>{% if action == 'delete' %}Delete{% else %}Reset{% endif %} {{ words|length }} cards?</h1>
+    <h1>{{ action_label }} {{ words|length }} cards?</h1>
   {% else %}
-    <h1>{% if action == 'delete' %}Delete{% else %}Reset{% endif %} {{ words|length }} word{{ words|length|pluralize }}?</h1>
-    <p class="intro">{% if action == 'delete' %}These words and their learning progress will be permanently removed.{% else %}These words will return to To learn, due immediately. Their text will stay saved.{% endif %}</p>
+    <h1>{{ action_label }} {{ words|length }} word{{ words|length|pluralize }}?</h1>
+  {% endif %}
+  {% if action == 'delete' %}
+    {% if permanent_count %}<p class="intro">{{ permanent_count }} deleted card{{ permanent_count|pluralize }} will be permanently removed. This cannot be undone.</p>{% endif %}
+    {% if active_count %}<p class="intro">{{ active_count }} card{{ active_count|pluralize }} will move to Deleted and can be restored later.</p>{% endif %}
+  {% else %}
+    <p class="intro">{% if permanent_count %}Deleted cards will be restored. {% endif %}Selected cards will return to To learn at stage 0, due immediately. Their text will stay saved.</p>
   {% endif %}
 </section>
 <section class="panel form-panel" aria-label="Confirm selected card action">
@@ -18,7 +23,8 @@
     <input type="hidden" name="action" value="{{ action }}">
     <input type="hidden" name="confirmed" value="yes">
     {% for word in words %}<input type="hidden" name="word_ids" value="{{ word.pk }}">{% endfor %}
-    <button class="button {% if action == 'delete' %}button-danger{% else %}button-primary{% endif %}" type="submit">{% if action == 'delete' %}Delete{% else %}Reset{% endif %}{% if words|length == 1 %} 1 word{% endif %}</button>
+    <input type="hidden" name="deleted_ids" value="{{ deleted_ids_json }}">
+    <button class="button {% if action == 'delete' %}button-danger{% else %}button-primary{% endif %}" type="submit">{{ action_label }}{% if words|length == 1 %} 1 word{% endif %}</button>
     <a class="button button-secondary" href="{% url 'home' %}?cards=open">Cancel</a>
   </form>
 </section>

@@ -26,6 +26,7 @@ urlpatterns = [
     path("words/<int:pk>/edit/", views.word_edit, name="word-edit"),
     path("words/<int:pk>/delete/", views.word_delete, name="word-delete"),
     path("words/<int:pk>/restore/", views.word_restore, name="word-restore"),
+    path("words/<int:pk>/undelete/", views.word_undelete, name="word-undelete"),
     path("words/<int:pk>/reset/", views.word_reset, name="word-reset"),
     path("archive/", views.archive, name="archive"),
     path("settings/", views.learning_settings, name="learning-settings"),

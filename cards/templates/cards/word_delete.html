@@ -4,13 +4,16 @@
 {% block header_actions %}{% include 'cards/_navigation.html' %}{% endblock %}
 {% block content %}
 <section class="page-heading">
-  <h1>Delete this word?</h1>
+  <h1>Permanently delete this word?</h1>
 </section>
 <section class="panel form-panel" aria-label="Confirm deletion">
+  <p>This permanently removes the card and its learning history. It cannot be restored or undone.</p>
   <form method="post" class="form-actions">
     {% csrf_token %}
-    <button class="button button-danger" type="submit">Delete word</button>
-    <a class="button button-secondary" href="{% url 'word-edit' word.pk %}">Keep word</a>
+    <input type="hidden" name="permanent" value="yes">
+    {% if return_to_study %}<input type="hidden" name="return_to" value="study">{% endif %}
+    <button class="button button-danger" type="submit">Permanently delete</button>
+    <a class="button button-secondary" href="{% url 'home' %}?progress=deleted">Keep word</a>
   </form>
 </section>
 {% endblock %}

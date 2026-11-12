@@ -1,3 +1,4 @@
+import json
 import uuid
 
 from django.conf import settings
@@ -42,28 +43,31 @@ def home(request):
     deck = Word.objects.all()
     active = deck.filter(archived_at__isnull=True)
     pending = StudySession.objects.filter(completed_at__isnull=True).values_list("queue", flat=True).first() or []
-    ready = Q(archived_at__isnull=True) & (Q(due_at__lte=now) | Q(pk__in=pending))
+    ready = Q(deleted_at__isnull=True, archived_at__isnull=True) & (Q(due_at__lte=now) | Q(pk__in=pending))
     progress = request.GET.get("progress", "all")
     filters = {
         "all": Q(),
         "to-learn": ready,
         "practiced": Q(archived_at__isnull=True) & ~ready,
         "learned": Q(archived_at__isnull=False),
+        "deleted": Q(deleted_at__isnull=False),
     }
     if progress not in filters:
         progress = "all"
     query = request.GET.get("q", "").strip()[:300]
-    words = deck.filter(filters[progress])
+    words = (Word.all_objects if progress in ("all", "deleted") else deck).filter(filters[progress])
     if query:
         words = words.filter(Q(chunk__icontains=query) | Q(meaning__icontains=query) | Q(example__icontains=query))
     words = words.annotate(ready_to_practice=Case(
         When(ready, then=Value(True)), default=Value(False), output_field=BooleanField(),
-    ))
+    ), is_deleted_card=Case(
+        When(deleted_at__isnull=False, then=Value(True)), default=Value(False), output_field=BooleanField(),
+    )).order_by("is_deleted_card", "-created_at", "-pk")
     ready_count = active.filter(ready).count()
     return render(request, "cards/home.html", {
         "words": words,
         "word_count": words.count(),
-        "total_count": deck.count(),
+        "total_count": Word.all_objects.count(),
         "to_learn_count": ready_count,
         "practiced_count": active.exclude(ready).count(),
         "learned_count": deck.filter(archived_at__isnull=False).count(),
@@ -144,13 +148,13 @@ def word_import_preview(request, pk):
 @owner_required
 @require_http_methods(["GET", "POST"])
 def word_edit(request, pk):
-    word = get_object_or_404(Word, pk=pk)
+    word = get_object_or_404(Word.all_objects, pk=pk)
     return_to_study = (request.POST if request.method == "POST" else request.GET).get("return_to") == "study"
     form = WordForm(request.POST if request.method == "POST" else None, instance=word)
     if request.method == "POST":
         with transaction.atomic():
             learning.lock_preferences()
-            word = get_object_or_404(Word, pk=pk)
+            word = get_object_or_404(Word.all_objects, pk=pk)
             previously_showed_reverse = word.show_reverse_immediately
             form = WordForm(request.POST, instance=word)
             if form.is_valid():
@@ -164,6 +168,8 @@ def word_edit(request, pk):
                         session.save(update_fields=["revealed", "response_token"])
                 if return_to_study:
                     return redirect("study")
+                if word.deleted_at:
+                    return redirect(reverse("home") + "?progress=deleted")
                 return redirect(reverse("home") + "?progress=learned" if word.archived_at else "home")
     return render(request, "cards/word_form.html", {"form": form, "word": word, "return_to_study": return_to_study})
 
@@ -171,16 +177,30 @@ def word_edit(request, pk):
 @owner_required
 @require_http_methods(["GET", "POST"])
 def word_delete(request, pk):
-    word = get_object_or_404(Word, pk=pk)
+    word = get_object_or_404(Word.all_objects, pk=pk)
+    return_to_study = (request.POST if request.method == "POST" else request.GET).get("return_to") == "study"
     if request.method == "POST":
         with transaction.atomic():
             learning.lock_preferences()
-            word = get_object_or_404(Word, pk=pk)
-            destination = reverse("home") + "?progress=learned" if word.archived_at else "home"
-            learning.clear_undo_history()
-            word.delete()
+            word = get_object_or_404(Word.all_objects, pk=pk)
+            permanent = request.POST.get("permanent") == "yes"
+            if permanent != bool(word.deleted_at):
+                return HttpResponseBadRequest("The card's status changed. Reopen Delete and confirm the current action.")
+            destination = (reverse("study") if return_to_study else
+                           reverse("home") + "?progress=deleted" if permanent else
+                           reverse("home") + "?progress=learned" if word.archived_at else "home")
+            if permanent:
+                Word.all_objects.filter(pk=word.pk, deleted_at__isnull=False).hard_delete()
+                session = learning.active_session()
+                if session:
+                    learning.clean_queue(session)
+            else:
+                learning.delete_words([word.pk], from_study=return_to_study)
         return redirect(destination)
-    return render(request, "cards/word_delete.html", {"word": word})
+    if not word.deleted_at:
+        destination = reverse("word-edit", args=[word.pk])
+        return redirect(destination + "?return_to=study" if return_to_study else destination)
+    return render(request, "cards/word_delete.html", {"word": word, "return_to_study": return_to_study})
 
 
 @owner_required
@@ -207,6 +227,20 @@ def word_restore(request, pk):
 
 
 @owner_required
+@require_POST
+def word_undelete(request, pk):
+    with transaction.atomic():
+        learning.lock_preferences()
+        word = get_object_or_404(Word.all_objects, pk=pk)
+        now = timezone.now()
+        restored = Word.all_objects.filter(pk=word.pk, deleted_at__isnull=False).update(
+            deleted_at=None, stage=0, archived_at=None, due_at=now, updated_at=now)
+        if restored:
+            learning.clear_undo_history()
+    return redirect(reverse("home") + "?progress=deleted")
+
+
+@owner_required
 @require_http_methods(["GET", "POST"])
 def word_reset(request, pk):
     word = get_object_or_404(Word, pk=pk)
@@ -228,18 +262,34 @@ def word_bulk(request):
             return HttpResponseBadRequest("Choose an action and valid words. Return to My cards and try again.")
         words = list(form.cleaned_data["word_ids"])
         action = form.cleaned_data["action"]
+        deleted_ids = [word.pk for word in words if word.deleted_at]
+        active_ids = [word.pk for word in words if not word.deleted_at]
         if request.POST.get("confirmed") == "yes":
+            try:
+                expected_deleted_ids = json.loads(request.POST.get("deleted_ids", "[]"))
+            except (ValueError, RecursionError):
+                return HttpResponseBadRequest("Invalid card status confirmation.")
+            if (not isinstance(expected_deleted_ids, list) or len(expected_deleted_ids) > 500
+                    or any(type(pk) is not int for pk in expected_deleted_ids)
+                    or set(expected_deleted_ids) != set(deleted_ids)):
+                return HttpResponseBadRequest("Card statuses changed. Select the cards and confirm again.")
             word_ids = [word.pk for word in words]
             if action == "reset":
+                Word.all_objects.filter(pk__in=deleted_ids).update(deleted_at=None)
                 learning.reset_words(word_ids)
             else:
-                learning.clear_undo_history()
-                Word.objects.filter(pk__in=word_ids).delete()
-                session = learning.active_session()
-                if session:
-                    learning.clean_queue(session)
+                learning.delete_words(active_ids)
+                Word.all_objects.filter(pk__in=deleted_ids, deleted_at__isnull=False).hard_delete()
             return redirect(reverse("home") + "?cards=open")
-    return render(request, "cards/word_bulk_confirm.html", {"words": words, "action": action})
+        if action == "delete":
+            action_label = "Permanently delete" if deleted_ids and not active_ids else "Delete"
+        else:
+            action_label = "Reset / Restore" if deleted_ids and active_ids else "Restore" if deleted_ids else "Reset"
+    return render(request, "cards/word_bulk_confirm.html", {
+        "words": words, "action": action, "action_label": action_label, "deleted_ids": deleted_ids,
+        "deleted_ids_json": json.dumps(deleted_ids),
+        "permanent_count": len(deleted_ids), "active_count": len(active_ids),
+    })
 
 
 @owner_required
@@ -249,7 +299,11 @@ def learning_settings(request):
     form = LearningSettingsForm(request.POST if request.method == "POST" else None, instance=preferences)
     if request.method == "POST" and form.is_valid():
         learning.change_target(form.cleaned_data["review_target"])
+        if "application/json" in request.headers.get("Accept", ""):
+            return JsonResponse({"saved": True})
         return redirect("learning-settings-saved")
+    if request.method == "POST" and "application/json" in request.headers.get("Accept", ""):
+        return JsonResponse({"errors": form.errors.get_json_data()}, status=400)
     return render(request, "cards/settings.html", {
         "form": form,
         "saved": request.method == "GET" and request.resolver_match.url_name == "learning-settings-saved",

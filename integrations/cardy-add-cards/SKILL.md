@@ -35,7 +35,7 @@ a new user message. Do not add cards merely because this skill was selected.
 
 After approval, check the Obverses through the read-only connection in groups of
 at most 100 phrases per check and omit
-existing matches. If the check fails, stop and report that duplication was not
+existing matches, including Learned and deleted cards. If the check fails, stop and report that duplication was not
 verified. Do not replace omitted cards without approval.
 
 Call the approved deck's `add_cards` tool with only the approved remaining cards,

@@ -1,9 +1,51 @@
 "use strict";
 
+const settingsForm = document.getElementById("learning-settings-form");
+if (settingsForm) {
+  const saveButton = settingsForm.querySelector(".settings-save");
+  const resetSaved = () => {
+    saveButton.textContent = "Save";
+    saveButton.classList.remove("is-saved");
+  };
+  settingsForm.addEventListener("input", resetSaved);
+  settingsForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    if (saveButton.disabled) return;
+    const error = document.getElementById("settings-save-error");
+    const submitted = new FormData(settingsForm);
+    error.hidden = true;
+    saveButton.disabled = true;
+    saveButton.textContent = "Saving…";
+    try {
+      const response = await fetch(settingsForm.action, {
+        method: "POST", body: submitted, credentials: "same-origin", cache: "no-store",
+        redirect: "error", headers: { "Accept": "application/json" },
+      });
+      const result = await response.json();
+      if (!response.ok) {
+        error.textContent = Object.values(result.errors || {}).flat().map((item) => item.message).join(" ") || "Could not save. Please try again.";
+        error.hidden = false;
+        resetSaved();
+        return;
+      }
+      if (result.saved !== true) throw new Error("Save not confirmed");
+      const unchanged = settingsForm.elements.review_target.value === submitted.get("review_target");
+      saveButton.textContent = unchanged ? "Saved" : "Save";
+      saveButton.classList.toggle("is-saved", unchanged);
+    } catch {
+      resetSaved();
+      error.textContent = "Could not save. Check your connection and try again.";
+      error.hidden = false;
+    } finally {
+      saveButton.disabled = false;
+    }
+  });
+}
+
 document.querySelectorAll("[data-copy-target]").forEach((button) => {
   button.addEventListener("click", async () => {
     const field = document.getElementById(button.dataset.copyTarget);
-    const status = document.getElementById("mcp-copy-status");
+    const copyLabel = button.getAttribute("aria-label");
     let copied = false;
     try {
       await navigator.clipboard.writeText(field.value);
@@ -20,9 +62,13 @@ document.querySelectorAll("[data-copy-target]").forEach((button) => {
       }
       if (copied) button.focus({ preventScroll: true });
     }
-    status.textContent = copied ? "Copied." : "Select the value and copy it manually.";
     button.textContent = copied ? "Copied" : "Copy";
-    window.setTimeout(() => { button.textContent = "Copy"; }, 2000);
+    button.title = copied ? "" : "Select the value and copy it manually.";
+    button.setAttribute("aria-label", copied ? "Copied" : "Select the value and copy it manually.");
+    window.setTimeout(() => {
+      button.textContent = "Copy";
+      button.setAttribute("aria-label", copyLabel);
+    }, 2000);
   });
 });
 

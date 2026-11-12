@@ -6,7 +6,7 @@
 <section class="page-heading">
   {% if word %}
   <div class="section-title-row">
-    <a class="back-arrow" href="{% if return_to_study %}{% url 'study' %}{% else %}{% url 'home' %}?{% if word.archived_at %}progress=learned{% else %}cards=open{% endif %}{% endif %}" aria-label="{% if return_to_study %}Back to practice{% else %}Back to My cards{% endif %}"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M15 5l-7 7 7 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></a>
+    <a class="back-arrow" href="{% if return_to_study %}{% url 'study' %}{% else %}{% url 'home' %}?{% if word.deleted_at %}progress=deleted{% elif word.archived_at %}progress=learned{% else %}cards=open{% endif %}{% endif %}" aria-label="{% if return_to_study %}Back to practice{% else %}Back to My cards{% endif %}"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M15 5l-7 7 7 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></a>
     <h1>Edit word</h1>
   </div>
   {% else %}
@@ -36,7 +36,13 @@
     <div class="form-actions{% if word %} word-edit-actions{% endif %}">
       <button class="button button-primary" type="submit">{% if word %}Save changes{% else %}Add word{% endif %}</button>
       {% if not word %}<a class="button button-secondary" href="{% url 'home' %}">Cancel</a>{% endif %}
-      {% if return_to_study %}<a class="button button-secondary" href="{% url 'study' %}">Cancel</a>{% elif word %}<a class="button button-danger" href="{% url 'word-delete' word.pk %}">Delete word</a>{% endif %}
+      {% if word %}
+      {% if word.deleted_at %}
+      <a class="button button-danger" href="{% url 'word-delete' word.pk %}">Delete word</a>
+      {% else %}
+      <button class="button button-danger" type="submit" formaction="{% url 'word-delete' word.pk %}" formmethod="post" formnovalidate>{% if return_to_study %}Delete{% else %}Delete word{% endif %}</button>
+      {% endif %}
+      {% endif %}
     </div>
   </form>
 </section>

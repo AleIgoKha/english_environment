@@ -174,7 +174,7 @@ class UndoTests(TestCase):
         self.assertEqual((word.chunk, word.meaning, word.stage), ("new text", "new meaning", 3))
         self.assertEqual(LearningSettings.objects.get(pk=1).review_target, 2)
 
-    def test_reset_or_delete_clear_undo_instead_of_restoring_old_deck(self):
+    def test_reset_clears_history_but_outside_deletion_keeps_other_undo(self):
         first = Word.objects.create(chunk="first")
         second = Word.objects.create(chunk="second")
         session = learning.start_or_resume()
@@ -184,11 +184,106 @@ class UndoTests(TestCase):
         self.respond("know")
         self.assertTrue(StudyReview.objects.exists())
         self.client.post(reverse("word-delete", args=[first.pk]))
-        self.assertFalse(StudyReview.objects.exists())
+        self.assertEqual(list(StudyReview.objects.values_list("word_id", flat=True)), [second.pk])
         self.undo(session)
         self.assertFalse(Word.objects.filter(pk=first.pk).exists())
         second.refresh_from_db()
-        self.assertEqual(second.stage, 1)
+        self.assertEqual(second.stage, 0)
+
+    def test_delete_during_learning_shows_undo_and_restores_deleted_card(self):
+        first = Word.objects.create(chunk="delete from Learning", meaning="keep reverse", stage=3)
+        other = Word.objects.create(chunk="next card")
+        before = learning.word_progress(first)
+        session = learning.start_or_resume()
+        page = self.client.post(reverse("word-delete", args=[first.pk]), {"return_to": "study"}, follow=True)
+        self.assertFalse(Word.objects.filter(pk=first.pk).exists())
+        self.assertContains(page, '>Undo</button>')
+        self.assertEqual(page.context["word"].pk, other.pk)
+        self.assertEqual(StudyReview.objects.get().choice, "delete")
+        self.undo(session)
+        first.refresh_from_db()
+        self.assertIsNone(first.deleted_at)
+        self.assertEqual(learning.word_progress(first), before)
+        self.assertEqual(first.meaning, "keep reverse")
+        self.assertEqual(session.queue, [first.pk, other.pk])
+        self.assertFalse(session.revealed)
+
+    def test_undo_last_card_deletion_is_available_while_waiting_and_survives_reopen(self):
+        word = Word.objects.create(chunk="last card")
+        session = learning.start_or_resume()
+        page = self.client.post(reverse("word-delete", args=[word.pk]), {"return_to": "study"}, follow=True)
+        self.assertContains(page, "Well done!")
+        self.assertContains(page, '>Undo</button>')
+        reopened = Client()
+        reopened.cookies = self.client.cookies.copy()
+        session.refresh_from_db()
+        token = session.response_token
+        page = reopened.post(reverse("study-undo"), {"response_token": token}, follow=True)
+        self.assertContains(page, "last card")
+        self.assertTrue(Word.objects.filter(pk=word.pk).exists())
+        self.assertEqual(page.context["remaining"], 1)
+        new_token = page.context["study_session"].response_token
+        reopened.post(reverse("study-undo"), {"response_token": token})
+        session.refresh_from_db()
+        self.assertEqual(session.response_token, new_token)
+        self.assertFalse(StudyReview.objects.exists())
+
+    def test_undo_learning_deletion_then_previous_answer(self):
+        first = Word.objects.create(chunk="answered first")
+        second = Word.objects.create(chunk="deleted second")
+        session = learning.start_or_resume()
+        self.respond("know")
+        self.client.post(reverse("word-delete", args=[second.pk]), {"return_to": "study"})
+        self.assertEqual(StudyReview.objects.count(), 2)
+        self.undo(session)
+        self.assertEqual(session.queue, [second.pk])
+        self.undo(session)
+        self.assertEqual(session.queue, [first.pk, second.pk])
+        first.refresh_from_db()
+        self.assertEqual(first.stage, 0)
+
+    def test_outside_deletion_skips_latest_answer_and_undoes_previous_card(self):
+        first = Word.objects.create(chunk="keep undo for first")
+        second = Word.objects.create(chunk="deleted outside Learning")
+        session = learning.start_or_resume()
+        self.respond("know")
+        self.respond("know")
+        self.client.post(reverse("word-delete", args=[second.pk]))
+        self.assertContains(self.client.get(reverse("study")), '>Undo</button>')
+        self.undo(session)
+        self.assertEqual(session.queue, [first.pk])
+        first.refresh_from_db()
+        self.assertEqual(first.stage, 0)
+        second.refresh_from_db()
+        self.assertIsNotNone(second.deleted_at)
+        self.assertFalse(Word.objects.filter(pk=second.pk).exists())
+
+    def test_bulk_deletion_outside_learning_preserves_other_history(self):
+        first = Word.objects.create(chunk="delete first")
+        second = Word.objects.create(chunk="keep second")
+        third = Word.objects.create(chunk="delete third")
+        fourth = Word.objects.create(chunk="still learning")
+        session = learning.start_or_resume()
+        for _ in range(3):
+            self.respond("know")
+        self.client.post(reverse("word-bulk"), {"action": "delete", "confirmed": "yes",
+                                               "word_ids": [first.pk, third.pk]})
+        self.assertEqual(list(StudyReview.objects.values_list("word_id", flat=True)), [second.pk])
+        self.undo(session)
+        self.assertEqual(session.queue, [second.pk, fourth.pk])
+        self.assertEqual(Word.all_objects.filter(deleted_at__isnull=False).count(), 2)
+
+    def test_undo_skips_directly_deleted_word_without_discarding_earlier_history(self):
+        first = Word.objects.create(chunk="valid earlier action")
+        second = Word.objects.create(chunk="deleted externally")
+        session = learning.start_or_resume()
+        self.respond("know")
+        self.respond("know")
+        second.delete()
+        self.undo(session)
+        self.assertEqual(session.queue, [first.pk])
+        self.assertFalse(Word.objects.filter(pk=second.pk).exists())
+        self.assertFalse(StudyReview.objects.exists())
 
     def test_outside_progress_changes_are_not_overwritten(self):
         word = Word.objects.create(chunk="changed")

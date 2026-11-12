@@ -24,7 +24,9 @@ a { color: inherit; }
 .app-header { display: flex; flex-wrap: nowrap; align-items: center; justify-content: space-between; gap: 8px 16px; min-height: 48px; box-sizing: content-box; flex-shrink: 0; }
 .brand { display: inline-flex; align-items: center; gap: 10px; font-size: 17px; font-weight: 650; letter-spacing: -.5px; text-decoration: none; }
 .brand-mark { display: block; flex-shrink: 0; width: 38px; height: 38px; border-radius: 10px; }
-.welcome { margin: 52px 0 30px; }
+.layout-login { display: flex; flex-direction: column; }
+.layout-login .page-content { display: flex; align-items: center; flex: 1; margin-top: 32px; margin-bottom: 32px; }
+.layout-login .login-panel { width: 100%; max-width: 420px; margin-left: auto; margin-right: auto; }
 .learning-overview { margin-top: 40px; }
 .progress-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); padding: 20px 0; border: 1px solid var(--border); border-radius: 16px; background: var(--surface); }
 .progress-stat { display: flex; flex-direction: column; align-items: center; gap: 2px; color: var(--purple-dark); text-decoration: none; }
@@ -58,7 +60,6 @@ a { color: inherit; }
 .filter-field input:focus-visible, .filter-field select:focus-visible { outline: none; border-color: var(--purple); box-shadow: inset 0 -2px var(--purple); }
 #filter-error:not([hidden]) { margin-top: 12px; }
 .cards-empty { margin: 16px 0 0; padding: 28px 20px; border: 1px solid var(--border); border-radius: 14px; background: var(--surface); color: var(--muted); font-size: 14px; text-align: center; }
-.eyebrow { color: var(--purple); font-size: 11px; font-weight: 750; letter-spacing: 2px; }
 h1 { margin: 14px 0; font-size: clamp(36px, 10vw, 48px); line-height: 1.13; font-weight: 600; letter-spacing: -1.8px; }
 h2 { margin: 0; font-size: 20px; font-weight: 650; letter-spacing: -.4px; }
 h3 { margin: 12px 0 4px; font-size: 17px; font-weight: 600; }
@@ -66,7 +67,6 @@ p { margin: 10px 0 20px; }
 .intro { color: var(--muted); font-size: 16px; }
 .panel { padding: 26px; border: 1px solid var(--border); border-radius: 24px; background: var(--surface); box-shadow: 0 8px 32px #45305a04; }
 .muted { color: var(--muted); font-size: 14px; }
-.card-symbol { display: inline-grid; place-items: center; width: 40px; height: 40px; margin-bottom: 16px; color: var(--purple); background: var(--lavender); border-radius: 13px; font-size: 24px; }
 .stack { display: grid; gap: 12px; }
 label { display: block; margin-bottom: 8px; font-size: 13px; font-weight: 650; }
 input, textarea { width: 100%; min-height: 54px; border: 1px solid #cfc3df; border-radius: 13px; background: #fdfbff; color: var(--ink); padding: 12px 16px; font-size: 18px; }
@@ -150,6 +150,12 @@ input[aria-invalid="true"], textarea[aria-invalid="true"] { border-color: #a13f6
 .word-status { margin: 8px 0 0; color: var(--purple-dark); font-size: 11px; }
 .restore-form { margin-top: 16px; }
 .word-form { gap: 22px; }
+.settings-field-row { display: flex; align-items: stretch; gap: 8px; min-width: 0; }
+.settings-field-row input { flex: 1; min-width: 0; }
+.settings-save { flex: 0 0 84px; width: 84px; padding: 10px; }
+.settings-save:disabled { cursor: default; }
+.settings-save:disabled, .settings-save.is-saved, .settings-save.is-saved:hover:enabled { background: #7254a326; border-color: var(--border); color: var(--purple-dark); }
+.settings-logout { margin-top: 24px; }
 .card-switch { display: flex; align-items: center; gap: 12px; min-height: 44px; cursor: pointer; position: relative; }
 .card-switch input { position: absolute; width: 1px; height: 1px; min-height: 0; margin: 0; padding: 0; border: 0; opacity: 0; }
 .switch-track { flex: 0 0 44px; height: 26px; border-radius: 20px; background: var(--border); position: relative; }
@@ -160,7 +166,8 @@ input[aria-invalid="true"], textarea[aria-invalid="true"] { border-color: #a13f6
 .optional-label, .field-help { color: var(--muted); font-size: 12px; font-weight: 400; }
 .field-help { margin: 6px 0 0; }
 .mcp-guide { margin-top: 20px; font-size: 14px; overflow-wrap: anywhere; }
-.mcp-guide > summary { cursor: pointer; color: var(--purple-dark); font-size: 18px; font-weight: 650; }
+.settings-panel > summary { cursor: pointer; color: var(--purple-dark); font-size: 18px; font-weight: 650; }
+.learning-settings[open] > summary { margin-bottom: 20px; }
 .mcp-guide code { font-size: .9em; }
 .mcp-guide > p:last-child { margin-bottom: 0; }
 .mcp-connection { margin-top: 16px; }
@@ -206,21 +213,20 @@ input[aria-invalid="true"], textarea[aria-invalid="true"] { border-color: #a13f6
 .study-card-footer .button-secondary { background: var(--surface); }
 .pause-note { margin: 20px 0 0; text-align: center; color: var(--muted); font-size: 12px; }
 .summary-home { margin-top: 12px; }
-@media (min-width: 700px) { .app-shell { padding-top: 36px; } .welcome { margin-top: 64px; } }
+@media (min-width: 700px) { .app-shell { padding-top: 36px; } }
 @media (min-width: 900px) {
   .app-shell { display: flex; flex-direction: column; max-width: 1120px; padding: 36px 40px 24px; }
   .app-header { padding-bottom: 24px; border-bottom: 1px solid var(--border); }
-  .layout-home .app-header, .layout-form .app-header { width: 100%; max-width: var(--content-width); margin-left: auto; margin-right: auto; }
+  .layout-home .app-header, .layout-form .app-header, .layout-login .app-header { width: 100%; max-width: var(--content-width); margin-left: auto; margin-right: auto; }
   .brand { font-size: 19px; }
   .page-content { display: grid; column-gap: 64px; margin: 56px 0 32px; }
   .page-content > * { min-width: 0; }
   h1 { font-size: 54px; }
-  .layout-home .page-content { display: block; width: 100%; max-width: var(--content-width); margin-left: auto; margin-right: auto; }
+  .layout-home .page-content, .layout-login .page-content { width: 100%; max-width: var(--content-width); margin-left: auto; margin-right: auto; }
+  .layout-home .page-content { display: block; }
   .layout-home .learning-overview { margin-top: 0; }
   .cards-section { margin-top: 80px; }
-  .layout-login .page-content { grid-template-columns: minmax(0, 1fr) minmax(300px, 420px); align-items: center; flex: 1; }
-  .layout-login .welcome { margin: 0; }
-  .layout-login .login-panel { padding: 36px; }
+  .layout-login .login-panel { margin-top: 0; padding: 32px; }
   .layout-form .page-content { display: block; width: 100%; max-width: var(--content-width); margin-right: auto; margin-left: auto; }
   .layout-form .page-heading { margin-top: 0; }
   .layout-form .form-panel { padding: 32px; }

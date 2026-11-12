@@ -6,6 +6,27 @@ from django.utils import timezone
 from authlib.oauth2.rfc6749 import ClientMixin, AuthorizationCodeMixin
 
 
+class WordQuerySet(models.QuerySet):
+    def delete(self):
+        now = timezone.now()
+        count = self.filter(deleted_at__isnull=True).update(deleted_at=now, updated_at=now)
+        return count, {self.model._meta.label: count}
+
+    delete.alters_data = True
+    delete.queryset_only = True
+
+    def hard_delete(self):
+        return super().delete()
+
+    hard_delete.alters_data = True
+    hard_delete.queryset_only = True
+
+
+class VisibleWordManager(models.Manager.from_queryset(WordQuerySet)):
+    def get_queryset(self):
+        return super().get_queryset().filter(deleted_at__isnull=True)
+
+
 class Word(models.Model):
     """A chunk and its learning state, shared by the app's single owner."""
 
@@ -16,14 +37,26 @@ class Word(models.Model):
     stage = models.PositiveSmallIntegerField(default=0)
     due_at = models.DateTimeField(default=timezone.now)
     archived_at = models.DateTimeField(null=True, blank=True)
+    deleted_at = models.DateTimeField(null=True, blank=True, db_index=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+
+    objects = VisibleWordManager()
+    all_objects = models.Manager.from_queryset(WordQuerySet)()
 
     class Meta:
         ordering = ["-created_at", "-pk"]
 
     def __str__(self):
         return self.chunk
+
+    def delete(self, using=None, keep_parents=False):
+        result = type(self).all_objects.using(using or self._state.db).filter(pk=self.pk).delete()
+        if result[0]:
+            self.refresh_from_db(using=using)
+        return result
+
+    delete.alters_data = True
 
 
 class LearningSettings(models.Model):
@@ -172,7 +205,7 @@ class StudySession(models.Model):
 
 
 class StudyReview(models.Model):
-    """A reversible answer; snapshots contain learning state, never card text."""
+    """A reversible answer or deletion; snapshots contain state, never card text."""
 
     session = models.ForeignKey(StudySession, on_delete=models.CASCADE, related_name="reviews")
     word = models.ForeignKey(Word, on_delete=models.CASCADE)

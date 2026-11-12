@@ -24,12 +24,12 @@ Prepare full cards: `obverse` is the correct phrase (max 300 characters);
 `Better: [corrected natural example]` on separate lines (max 2,000 characters);
 `extra` is blank. Check candidates through `check_existing_cards` on
 the connected Cardy plugin (production), or the legacy `cardy` connection, and
-omit existing matches, including Learned cards. Discover available tools rather
+omit existing matches, including Learned and deleted cards. Discover available tools rather
 than guessing namespaces. Use
 `cardy-local` only when the user explicitly requests the local test deck. Never
 silently substitute one deck for the other. If MCP fails,
 label the result as unchecked rather than claiming the cards are new. Matching
-does not detect paraphrases or deleted cards.
+does not detect paraphrases or permanently deleted cards.
 
 Save the proposed full cards as a private JSON batch outside tracked repository
 files, with a UUID and date, so they can be reviewed later. If private file output

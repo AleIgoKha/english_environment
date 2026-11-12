@@ -332,10 +332,20 @@ class LearningTests(TestCase):
         self.assertEqual(active.stage, 4)
         self.assertIsNotNone(archived.archived_at)
 
+    def test_inline_settings_save_reports_success_only_after_valid_save(self):
+        url = reverse("learning-settings")
+        invalid = self.client.post(url, {"review_target": "11"}, HTTP_ACCEPT="application/json")
+        self.assertEqual(invalid.status_code, 400)
+        self.assertIn("review_target", invalid.json()["errors"])
+        self.assertEqual(LearningSettings.objects.get(pk=1).review_target, 5)
+        saved = self.client.post(url, {"review_target": "7"}, HTTP_ACCEPT="application/json")
+        self.assertEqual(saved.json(), {"saved": True})
+        self.assertEqual(LearningSettings.objects.get(pk=1).review_target, 7)
+
     def test_invalid_settings_on_saved_page_do_not_claim_success(self):
         response = self.client.post(reverse("learning-settings-saved"), {"review_target": "0"})
         self.assertIn("review_target", response.context["form"].errors)
-        self.assertNotContains(response, "Settings saved.")
+        self.assertNotContains(response, ">Saved</button>")
 
     def test_changed_target_applies_to_next_answer_in_existing_session(self):
         word = Word.objects.create(chunk="learn me")

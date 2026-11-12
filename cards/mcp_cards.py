@@ -19,7 +19,7 @@ ADD_TOOL = {
     "description": (
         "Add 1–100 cards only after the user approves these exact Obverse, Reverse and Extra values "
         "in the current chat. Never call from a scheduled/background run. Keep batch_id unchanged "
-        "when retrying the same approved batch. Existing Obverses (including Learned) are skipped, "
+        "when retrying the same approved batch. Existing Obverses (including Learned and deleted cards) are skipped, "
         "never overwritten. Requests with more than 100 cards are rejected before any cards are added. "
         "The chat may request a lower count. The 64 KiB JSON request limit also applies. "
         "Requires cards:add OAuth permission or the separate add-cards credential."

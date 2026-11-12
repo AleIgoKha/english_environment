@@ -63,7 +63,8 @@ class WordManagementTests(TestCase):
             edit = self.client.get(edit_url)
             self.assertContains(edit, 'name="return_to" value="study"')
             self.assertContains(edit, "Back to practice")
-            self.assertContains(edit, "Cancel")
+            self.assertNotContains(edit, ">Cancel</a>")
+            self.assertContains(edit, f'formaction="{reverse("word-delete", args=[word.pk])}" formmethod="post" formnovalidate>Delete</button>')
             response = self.client.post(edit_url, {"chunk": "corrected", "meaning": "new reverse", "return_to": "study"})
             self.assertRedirects(response, reverse("study"))
             session.refresh_from_db()
@@ -166,7 +167,7 @@ class WordManagementTests(TestCase):
         word = Word.objects.create(chunk=unsafe, meaning=unsafe, example=unsafe)
         for url in [reverse("home"), reverse("word-edit", args=[word.pk]), reverse("word-delete", args=[word.pk])]:
             with self.subTest(url=url):
-                response = self.client.get(url)
+                response = self.client.get(url, follow=True)
                 if url != reverse("word-delete", args=[word.pk]):
                     self.assertContains(response, "&lt;script&gt;")
                 self.assertNotContains(response, "<script>")
@@ -190,15 +191,37 @@ class WordManagementTests(TestCase):
         word.refresh_from_db()
         self.assertEqual((word.chunk, word.meaning), ("original", "original meaning"))
 
-    def test_delete_get_only_confirms_and_post_deletes_only_chosen_word(self):
+    def test_delete_get_does_not_mutate_and_post_deletes_only_chosen_word(self):
         chosen = Word.objects.create(chunk="chosen")
         other = Word.objects.create(chunk="keep me")
         url = reverse("word-delete", args=[chosen.pk])
-        self.assertContains(self.client.get(url), "Delete this word?")
+        self.assertRedirects(self.client.get(url), reverse("word-edit", args=[chosen.pk]))
         self.assertTrue(Word.objects.filter(pk=chosen.pk).exists())
         self.assertRedirects(self.client.post(url), reverse("home"))
         self.assertFalse(Word.objects.filter(pk=chosen.pk).exists())
         self.assertTrue(Word.objects.filter(pk=other.pk).exists())
+
+    def test_delete_from_practice_is_immediate_and_returns_to_next_card(self):
+        chosen = Word.objects.create(chunk="delete while learning")
+        other = Word.objects.create(chunk="next card")
+        session = learning.start_or_resume()
+        url = reverse("word-delete", args=[chosen.pk]) + "?return_to=study"
+        self.assertRedirects(self.client.get(url), reverse("word-edit", args=[chosen.pk]) + "?return_to=study")
+        self.assertTrue(Word.objects.filter(pk=chosen.pk).exists())
+        self.assertRedirects(self.client.post(url, {"return_to": "study", "chunk": "", "meaning": "unsaved"}), reverse("study"))
+        self.assertEqual(Word.all_objects.get(pk=chosen.pk).chunk, "delete while learning")
+        self.assertEqual(Word.all_objects.get(pk=chosen.pk).meaning, "")
+        session.refresh_from_db()
+        self.assertEqual(session.queue, [other.pk])
+        self.assertFalse(Word.objects.filter(pk=chosen.pk).exists())
+        page = self.client.get(reverse("study"))
+        self.assertEqual(page.context["word"].pk, other.pk)
+        self.assertEqual(page.context["remaining"], 1)
+        self.assertRedirects(self.client.post(reverse("word-delete", args=[other.pk]),
+                                             {"return_to": "study"}), reverse("study"))
+        waiting = self.client.get(reverse("study"))
+        self.assertContains(waiting, "Well done!")
+        self.assertEqual(waiting.context["remaining"], 0)
 
     def test_learned_filter_shows_only_learned_words_with_reset_action(self):
         Word.objects.create(chunk="still learning")

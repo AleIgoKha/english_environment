@@ -27,6 +27,7 @@
             <option value="to-learn" {% if progress == 'to-learn' %}selected{% endif %}>To learn</option>
             <option value="practiced" {% if progress == 'practiced' %}selected{% endif %}>Practiced</option>
             <option value="learned" {% if progress == 'learned' %}selected{% endif %}>Learned</option>
+            <option value="deleted" {% if progress == 'deleted' %}selected{% endif %}>Deleted</option>
           </select>
         </div>
         <div class="filter-field">
@@ -49,11 +50,13 @@
         <div class="selection-bar" aria-label="Selected card actions">
           <div class="selection-heading"><output id="selection-count" aria-live="polite">Select cards</output><button type="button" class="selection-all">Select all</button><button type="button" class="selection-cancel" aria-label="Cancel selection">×</button></div>
           <div class="selection-buttons">
-            <button type="submit" name="action" value="reset">Reset</button>
+            <button type="submit" name="action" value="reset">{% if progress == 'deleted' %}Restore{% else %}Reset{% endif %}</button>
             <button type="submit" name="action" value="delete" class="danger-link">Delete</button>
           </div>
         </div>
       </form>
+      {% elif progress == 'deleted' %}
+        <p class="cards-empty">No deleted cards match this view.</p>
       {% elif total_count %}
         <p class="cards-empty">No words match this view. <a href="{% url 'home' %}?cards=open">Show all words</a></p>
       {% else %}

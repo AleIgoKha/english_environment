@@ -1,20 +1,24 @@
 <ul class="word-list">
   {% for word in words %}
-  <li class="word-card">
-    <label class="word-selection"><input class="word-checkbox" type="checkbox" name="word_ids" value="{{ word.pk }}" aria-label="Select {{ word.chunk }}"></label>
+  <li class="word-card{% if word.deleted_at %} is-deleted{% endif %}">
+    <label class="word-selection"><input class="word-checkbox" type="checkbox" name="word_ids" value="{{ word.pk }}" data-deleted="{{ word.deleted_at|yesno:'true,false' }}" aria-label="Select {{ word.chunk }}"></label>
     <div class="word-copy">
       <h3 class="word-chunk"><a href="{% url 'word-edit' word.pk %}">{{ word.chunk }}</a></h3>
       {% if word.meaning %}<p class="word-meaning">{{ word.meaning|linebreaksbr }}</p>{% endif %}
       {% if word.example %}<p class="word-example">{{ word.example|linebreaksbr }}</p>{% endif %}
-      <p class="word-status">{% if word.archived_at %}Learned{% elif word.ready_to_practice %}To learn{% else %}Practiced{% endif %}{% if not word.archived_at %} · {% if word.ready_to_practice %}Ready to review{% else %}Next review: {{ word.due_at|date:"j M Y" }}{% endif %}{% endif %}</p>
+      <p class="word-status">{% if word.deleted_at %}Deleted · {{ word.deleted_at|date:"j M Y" }}{% else %}{% if word.archived_at %}Learned{% elif word.ready_to_practice %}To learn{% else %}Practiced{% endif %}{% if not word.archived_at %} · {% if word.ready_to_practice %}Ready to review{% else %}Next review: {{ word.due_at|date:"j M Y" }}{% endif %}{% endif %}{% endif %}</p>
     </div>
     <details class="word-actions" name="word-actions">
       <summary aria-label="Actions for {{ word.chunk }}"><span aria-hidden="true">⋮</span></summary>
       <div class="word-action-menu">
+        {% if word.deleted_at %}
+        <button type="submit" formaction="{% url 'word-undelete' word.pk %}" formmethod="post">Restore</button>
+        {% else %}
         <a href="{% url 'word-reset' word.pk %}">Reset</a>
+        {% endif %}
         <a href="{% url 'word-edit' word.pk %}">Edit</a>
         <button type="button" class="select-word" data-word-id="{{ word.pk }}">Select</button>
-        <a class="danger-link" href="{% url 'word-delete' word.pk %}">Delete</a>
+        {% if word.deleted_at %}<a class="danger-link" href="{% url 'word-delete' word.pk %}">Delete</a>{% else %}<button type="submit" class="danger-link" formaction="{% url 'word-delete' word.pk %}" formmethod="post" formnovalidate>Delete</button>{% endif %}
       </div>
     </details>
   </li>

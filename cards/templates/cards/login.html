@@ -2,14 +2,7 @@
 {% block layout_class %}layout-login{% endblock %}
 {% block title %}Welcome · Cardy{% endblock %}
 {% block content %}
-<section class="welcome">
-  <span class="eyebrow">YOUR ENGLISH, EVERY DAY</span>
-  <h1>Small steps.<br>More words.</h1>
-  <p class="intro">A quiet space to make English stick.</p>
-</section>
-<section class="panel login-panel" aria-labelledby="login-title">
-  <span class="card-symbol" aria-hidden="true">✦</span>
-  <h2 id="login-title">Welcome back</h2>
+<section class="panel login-panel" aria-label="Sign in">
   {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
   {% if local_test_login %}
     <form method="post" action="{% url 'local-test-login' %}">

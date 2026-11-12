@@ -53,14 +53,45 @@ See [OpenAI OAuth guidance](https://developers.openai.com/plugins/build/auth) an
 
 `check_existing_cards` accepts an object with `phrases`: 1–100 nonblank strings,
 each at most 300 characters. It returns one `{phrase, exists}` result for each
-input, in order, plus `includes_learned: true`. Results include only submitted
+input, in order, plus `includes_learned: true`. Matches include soft-deleted cards
+as well. Results include only submitted
 phrases and existence flags; card backs, progress, and unrelated cards are not
 returned.
 
 Matching reuses `cards/duplicates.py`, so it agrees with CSV imports and Add/Edit:
 Obverses are compared after Unicode compatibility normalization, case folding,
 and collapsing whitespace. Learned cards count; Reverse and Extra do not affect
-matching. Paraphrases, equivalent lessons, and deleted cards are not detected.
+matching. Paraphrases and equivalent lessons are not detected. Permanently
+deleted cards cannot be checked or recovered.
+
+Deletion sets `Word.deleted_at`, retaining card text and learning progress.
+The default `Word.objects` manager hides deleted records from learning counts,
+reset/learning routes. `Word.all_objects` is used
+explicitly for duplicate checks and the owner's **All** and **Progress → Deleted**
+views. All places deleted cards below every non-deleted card; the My cards count
+includes deleted entries, while learning counts exclude them. Both views offer
+a CSRF-protected POST Restore action in the same three-dot menu, resetting stage
+to 0, clearing Learned and Deleted status, and making it due immediately. The
+deleted-card menu also offers Edit (content only, retaining Deleted status),
+Select, and Delete, opening a separate permanent-deletion
+confirmation. Only an already-deleted card with `permanent=yes` may be physically
+removed. Retrying a soft-deletion POST or submitting a stale permanent-deletion
+form after restoration returns 400 instead of escalating the action.
+Single-card soft deletion submits directly with CSRF protection, without a
+confirmation page; GET never deletes. Bulk
+selection supports Reset/Restore and Delete for every status. Its confirmation
+shows soft versus permanent deletion counts and carries a snapshot of deleted
+IDs; changed statuses or stale retries are rejected. Non-deleted selected cards
+are soft-deleted, while already-deleted selected cards are permanently removed.
+Deleting a card removes it
+from the current queue and invalidates stale learning forms. MCP checks, MCP
+adds, Add/Edit, and CSV imports all reserve deleted Obverses, so restoring the
+original card is the way to reuse one.
+Deletion from Learning records a durable study Undo action, including when the
+last card is removed. Undo restores that card and its prior queue position and
+progress. Deletion elsewhere, including bulk deletion, removes only the deleted
+cards' Undo entries. Undo skips those cards and preserves history for other
+cards; it never restores an outside deletion.
 An unavailable deck returns a tool error, never a misleading all-new result.
 
 The scheduled task should check candidates before generating its suggestions and omit

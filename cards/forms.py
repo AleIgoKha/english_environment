@@ -14,7 +14,7 @@ class WordForm(forms.ModelForm):
     def clean_chunk(self):
         chunk = self.cleaned_data["chunk"]
         if self.check_duplicates and obverse_key(chunk) in existing_obverses(self.instance.pk):
-            raise forms.ValidationError("A card with this Obverse already exists, including learned cards.")
+            raise forms.ValidationError("A card with this Obverse already exists, including learned and deleted cards.")
         return chunk
 
     class Meta:
@@ -45,7 +45,7 @@ class StudyActionForm(forms.Form):
 
 class BulkWordActionForm(forms.Form):
     action = forms.ChoiceField(choices=[("reset", "Reset"), ("delete", "Delete")])
-    word_ids = forms.ModelMultipleChoiceField(queryset=Word.objects.all())
+    word_ids = forms.ModelMultipleChoiceField(queryset=Word.all_objects.all())
 
 
 class WordImportForm(forms.Form):

@@ -9,14 +9,14 @@ def obverse_key(text):
 
 
 def existing_obverses(exclude_pk=None):
-    words = Word.objects.all()
+    words = Word.all_objects.all()
     if exclude_pk is not None:
         words = words.exclude(pk=exclude_pk)
     return {obverse_key(text) for text in words.values_list("chunk", flat=True)}
 
 
 def classify_rows(rows):
-    """Include learned cards and earlier rows in this batch in the comparison."""
+    """Include learned/deleted cards and earlier rows in this batch."""
     seen = existing_obverses()
     classified = []
     for row in rows:

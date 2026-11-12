@@ -147,6 +147,16 @@ class PostgresConcurrencyTests(TransactionTestCase):
         self.assertEqual(Word.objects.filter(chunk="concurrent MCP phrase").count(), 1)
         self.assertEqual(sorted(result["replayed"] for result in results), [False, True])
 
+    def test_concurrent_undo_of_learning_deletion_restores_card_once(self):
+        session = learning.start_or_resume()
+        learning.delete_words([self.word.pk], from_study=True)
+        session.refresh_from_db()
+        self.run_together(lambda: learning.undo(session.response_token))
+        session.refresh_from_db()
+        self.assertTrue(Word.objects.filter(pk=self.word.pk).exists())
+        self.assertEqual(session.queue, [self.word.pk])
+        self.assertEqual(StudyReview.objects.count(), 0)
+
     def test_concurrent_token_generation_leaves_one_valid_role_token(self):
         import hashlib
         tokens = self.run_together(lambda: rotate_token("read"))

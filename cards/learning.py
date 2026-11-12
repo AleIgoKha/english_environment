@@ -3,7 +3,7 @@ from datetime import datetime, time, timedelta, timezone as datetime_timezone
 import uuid
 
 from django.db import transaction
-from django.db.models import F
+from django.db.models import F, Q
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 
@@ -39,14 +39,44 @@ def clear_undo_history():
 
 
 def can_undo(session):
-    return bool(session and session.reviews.exists())
+    return bool(session and session.reviews.filter(
+        Q(word__deleted_at__isnull=True) | Q(choice="delete", word__deleted_at__isnull=False)).exists())
 
 
-def word_progress(word):
+def word_progress(word, include_deleted=False):
     def stored_time(value):
         return value.astimezone(datetime_timezone.utc).isoformat() if value else None
 
-    return {"stage": word.stage, "due_at": stored_time(word.due_at), "archived_at": stored_time(word.archived_at)}
+    progress = {"stage": word.stage, "due_at": stored_time(word.due_at), "archived_at": stored_time(word.archived_at)}
+    if include_deleted:
+        progress["deleted_at"] = stored_time(word.deleted_at)
+    return progress
+
+
+@transaction.atomic
+def delete_words(word_ids, from_study=False):
+    """Only deletion from Learning is reversible through the study Undo stack."""
+    lock_preferences()
+    words = list(Word.objects.filter(pk__in=word_ids))
+    session = active_session()
+    reversible = bool(from_study and len(words) == 1 and session and words[0].pk in session.queue)
+    if reversible:
+        word = words[0]
+        before = word_progress(word)
+        snapshot = {"queue": list(session.queue), "initial_stages": dict(session.initial_stages),
+                    "setbacks": dict(session.setbacks)}
+    ids = [word.pk for word in words]
+    count, _ = Word.objects.filter(pk__in=ids).delete()
+    if reversible:
+        word.refresh_from_db()
+        StudyReview.objects.create(session=session, word=word, choice="delete", word_before=before,
+            word_after=word_progress(word, include_deleted=True), session_before=snapshot)
+    else:
+        # Forget actions for these cards only, preserving undo for other cards.
+        StudyReview.objects.filter(word_id__in=ids).delete()
+    if session:
+        clean_queue(session)
+    return count
 
 
 def clean_queue(session):
@@ -182,11 +212,25 @@ def undo(response_token):
     session = StudySession.objects.order_by("-pk").first()
     if not session or session.response_token != response_token:
         return
-    review = session.reviews.order_by("-pk").first()
-    if not review:
-        return
-    word = Word.objects.get(pk=review.word_id)
-    if word_progress(word) != review.word_after:
+    skipped = False
+    while True:
+        review = session.reviews.order_by("-pk").first()
+        if not review:
+            if skipped:
+                clean_queue(session)
+                session.response_token = uuid.uuid4()
+                session.save(update_fields=["response_token"])
+            return
+        is_deletion = review.choice == "delete"
+        word = (Word.all_objects if is_deletion else Word.objects).filter(pk=review.word_id).first()
+        if word is not None and (not is_deletion or (
+                word.deleted_at and word_progress(word, include_deleted=True) == review.word_after)):
+            break
+        # A deleted answer card, or a deletion already changed elsewhere, must
+        # not hide valid earlier actions or bring the card back unexpectedly.
+        review.delete()
+        skipped = True
+    if word_progress(word, include_deleted=is_deletion) != review.word_after:
         # Do not overwrite a word that has since been changed outside studying.
         clear_undo_history()
         session.response_token = uuid.uuid4()
@@ -196,7 +240,9 @@ def undo(response_token):
     word.due_at = parse_datetime(review.word_before["due_at"])
     archived = review.word_before["archived_at"]
     word.archived_at = parse_datetime(archived) if archived else None
-    word.save(update_fields=["stage", "due_at", "archived_at", "updated_at"])
+    if is_deletion:
+        word.deleted_at = None
+    word.save(update_fields=["stage", "due_at", "archived_at", "deleted_at", "updated_at"])
     snapshot = review.session_before
     # Keep cards that arrived after this answer at the end of the restored queue.
     extras = [pk for pk in session.queue if pk not in snapshot["queue"]]

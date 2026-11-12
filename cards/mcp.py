@@ -25,9 +25,9 @@ TOOL = {
     "name": "check_existing_cards",
     "title": "Check phrases in Cardy",
     "description": (
-        "Check up to 100 candidate phrases against all current Cardy Obverses, including Learned cards. "
+        "Check up to 100 candidate phrases against all saved Cardy Obverses, including Learned and deleted cards. "
         "Matches ignore capitalization, extra whitespace, and Unicode compatibility variants. "
-        "Reverse and Extra are not compared. This does not detect paraphrases or deleted cards. "
+        "Reverse and Extra are not compared. This does not detect paraphrases. "
         "Returns one exists flag per submitted phrase without adding, editing, or deleting cards."
     ),
     "inputSchema": {

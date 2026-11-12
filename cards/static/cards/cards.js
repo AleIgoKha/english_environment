@@ -9,10 +9,16 @@ function setupCardSelection() {
   const countLabel = document.getElementById("selection-count");
   const selectAllButton = selectionForm.querySelector(".selection-all");
   const actionButtons = selectionForm.querySelectorAll(".selection-buttons button");
+  const resetButton = selectionForm.querySelector('.selection-buttons button[value="reset"]');
+  const deleteButton = selectionForm.querySelector('.selection-buttons button[value="delete"]');
   selectionForm.classList.add("selection-ready");
 
   function updateSelection() {
-    const count = checkboxes.filter((checkbox) => checkbox.checked).length;
+    const selected = checkboxes.filter((checkbox) => checkbox.checked);
+    const count = selected.length;
+    const deletedCount = selected.filter((checkbox) => checkbox.dataset.deleted === "true").length;
+    resetButton.textContent = deletedCount ? (deletedCount === count ? "Restore" : "Reset / Restore") : "Reset";
+    deleteButton.textContent = count && deletedCount === count ? "Permanently delete" : "Delete";
     selectionForm.classList.toggle("selection-active", count > 0);
     countLabel.textContent = `${count} selected`;
     selectAllButton.textContent = count === checkboxes.length ? "Deselect all" : "Select all";
