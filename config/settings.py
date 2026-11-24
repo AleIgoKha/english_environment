@@ -133,6 +133,10 @@ LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,
     "filters": {"oauth_query": {"()": "cards.logging.RedactOAuthQuery"}},
-    "loggers": {"django.server": {"filters": ["oauth_query"]}},
+    "handlers": {"google_sign_in_console": {"class": "logging.StreamHandler"}},
+    "loggers": {
+        "django.server": {"filters": ["oauth_query"]},
+        "cards.auth_views": {"handlers": ["google_sign_in_console"], "level": "WARNING", "propagate": False},
+    },
 }
 LOGGING["loggers"]["authlib.oauth2"] = {"level": "WARNING"}

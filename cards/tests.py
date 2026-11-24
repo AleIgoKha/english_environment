@@ -6,7 +6,8 @@ from urllib.parse import parse_qs, urlparse
 from django.conf import settings
 from django.test import Client, TestCase, override_settings
 from django.urls import reverse
-from authlib.integrations.base_client.errors import MismatchingStateError
+from authlib.integrations.base_client.errors import MismatchingStateError, OAuthError
+from joserfc.errors import InvalidClaimError
 from requests import ConnectionError
 
 from .auth_views import google_client
@@ -83,13 +84,58 @@ class GoogleLoginTests(TestCase):
                 self.assertNotIn("auth_kind", self.client.session)
 
     def test_google_failures_are_generic_and_do_not_login(self):
-        for error in [MismatchingStateError(), ConnectionError("private secret")]:
-            with patch("cards.auth_views.google_client") as client:
+        secret = "yours@example.test private-token private-code private-state"
+        scenarios = (
+            (MismatchingStateError(description=secret), "session_cookie_missing"),
+            (OAuthError(error="invalid_grant", description=secret), "google_invalid_grant"),
+            (OAuthError(error=secret, description=secret), "google_oauth_error"),
+            (InvalidClaimError("nonce", description=secret), "id_token_nonce_invalid"),
+            (ConnectionError(secret), "google_request_failed"),
+        )
+        for error, reason in scenarios:
+            with self.subTest(reason=reason), self.assertLogs("cards.auth_views", level="WARNING") as recorded, patch(
+                "cards.auth_views.google_client",
+            ) as client:
                 client.return_value.authorize_access_token.side_effect = error
-                response = self.client.get(reverse("google-callback"))
+                response = self.client.get(reverse("google-callback"), {
+                    "code": "private-code", "state": "private-state",
+                })
             self.assertEqual(response.status_code, 403)
-            self.assertNotContains(response, "private secret", status_code=403)
+            self.assertNotContains(response, "private-token", status_code=403)
             self.assertNotIn("auth_kind", self.client.session)
+            self.assertEqual([record.getMessage() for record in recorded.records],
+                             [f"Google sign-in failed phase=callback reason={reason}"])
+            self.assertIsNone(recorded.records[0].exc_info)
+
+    def test_callback_logs_a_fixed_reason_for_google_denial(self):
+        with self.assertLogs("cards.auth_views", level="WARNING") as recorded:
+            response = self.client.get(reverse("google-callback"), {
+                "error": "access_denied", "error_description": "private-provider-details",
+            })
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(recorded.records[0].getMessage(),
+                         "Google sign-in failed phase=callback reason=google_access_denied")
+
+    def test_state_failure_distinguishes_a_missing_parameter_from_a_mismatch(self):
+        for params, reason in (
+            ({"code": "private-code"}, "callback_state_missing"),
+            ({"code": "private-code", "state": "private-state"}, "callback_state_mismatch"),
+        ):
+            with self.subTest(reason=reason), self.assertLogs("cards.auth_views", level="WARNING") as recorded:
+                self.client.cookies[settings.SESSION_COOKIE_NAME] = "private-cookie"
+                response = self.client.get(reverse("google-callback"), params)
+                self.assertEqual(response.status_code, 403)
+                self.assertEqual(recorded.records[0].getMessage(),
+                                 f"Google sign-in failed phase=callback reason={reason}")
+
+    def test_unverified_email_is_logged_without_account_details(self):
+        with self.assertLogs("cards.auth_views", level="WARNING") as recorded:
+            response = self.finish_login({
+                "sub": "private-subject", "email": "private@example.test", "email_verified": False,
+            })
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(recorded.records[0].getMessage(),
+                         "Google sign-in failed phase=callback reason=google_email_unverified")
 
     def test_changed_owner_or_credentials_revoke_sessions(self):
         for changed in [{"ALLOWED_GOOGLE_EMAIL": "different@example.test"}, {"GOOGLE_CLIENT_SECRET": "changed"}]:
