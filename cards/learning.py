@@ -1,5 +1,5 @@
 """Small, server-side spaced-repetition engine. No background job is needed."""
-from datetime import datetime, time, timedelta, timezone as datetime_timezone
+from datetime import timedelta, timezone as datetime_timezone
 import uuid
 
 from django.db import transaction
@@ -25,9 +25,7 @@ def lock_preferences(account_id):
 
 def next_review(stage, now):
     days = REVIEW_GAPS[min(max(stage - 1, 0), len(REVIEW_GAPS) - 1)]
-    local_zone = timezone.get_default_timezone()
-    due_date = timezone.localtime(now, local_zone).date() + timedelta(days=days)
-    return datetime.combine(due_date, time.min, tzinfo=local_zone)
+    return now.astimezone(datetime_timezone.utc) + timedelta(hours=24 * days)
 
 
 def active_session(account_id):

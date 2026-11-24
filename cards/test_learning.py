@@ -114,16 +114,23 @@ class LearningTests(TestCase):
         self.assertEqual(current_word.pk, word.pk)
         self.assertTrue(session.revealed)
 
-    def test_know_advances_once_and_is_not_due_again_the_same_day(self):
-        word = Word.objects.create(account_id=OWNER_ACCOUNT_ID, chunk="remember")
-        learning.start_or_resume(OWNER_ACCOUNT_ID)
-        session = self.respond()
+    def test_know_advances_once_and_is_due_after_exactly_24_hours(self):
+        reviewed_at = datetime(2026, 11, 2, 21, 59, tzinfo=datetime_timezone.utc)
+        due_at = reviewed_at + timedelta(hours=24)
+        word = Word.objects.create(account_id=OWNER_ACCOUNT_ID, chunk="remember", due_at=reviewed_at)
+        with patch("cards.learning.timezone.now", return_value=reviewed_at):
+            learning.start_or_resume(OWNER_ACCOUNT_ID)
+            session = self.respond()
         word.refresh_from_db()
         self.assertEqual(word.stage, 1)
         self.assertIsNone(session.completed_at)
         self.assertIsNone(word.archived_at)
-        self.assertEqual(timezone.localtime(word.due_at).date(), timezone.localdate() + timedelta(days=1))
-        self.assertEqual(learning.start_or_resume(OWNER_ACCOUNT_ID).queue, [])
+        self.assertEqual(word.due_at, due_at)
+        for too_early in [reviewed_at, reviewed_at + timedelta(minutes=1), due_at - timedelta(seconds=1)]:
+            with self.subTest(too_early=too_early), patch("cards.learning.timezone.now", return_value=too_early):
+                self.assertEqual(learning.start_or_resume(OWNER_ACCOUNT_ID).queue, [])
+        with patch("cards.learning.timezone.now", return_value=due_at):
+            self.assertEqual(learning.start_or_resume(OWNER_ACCOUNT_ID).queue, [word.pk])
 
     def test_five_spaced_successes_use_expected_gaps_then_archive(self):
         current = datetime(2026, 11, 2, 12, tzinfo=datetime_timezone.utc)
@@ -136,7 +143,7 @@ class LearningTests(TestCase):
                 self.assertEqual(word.stage, stage)
                 if stage < 5:
                     gap = [1, 3, 7, 14][stage - 1]
-                    self.assertEqual(timezone.localtime(word.due_at).date(), timezone.localtime(current).date() + timedelta(days=gap))
+                    self.assertEqual(word.due_at, current + timedelta(hours=24 * gap))
                     self.assertIsNone(word.archived_at)
                     current = word.due_at
                 else:
@@ -149,19 +156,17 @@ class LearningTests(TestCase):
         for stage, gap in enumerate([1, 1, 3, 7, 14, 30, 60, 120, 240, 365]):
             with self.subTest(stage=stage):
                 due = learning.next_review(stage, current)
-                self.assertEqual(due.date(), timezone.localtime(current).date() + timedelta(days=gap))
-                self.assertEqual((due.hour, due.minute), (0, 0))
+                self.assertEqual(due, current + timedelta(hours=24 * gap))
 
-    def test_calendar_days_use_chisinau_across_utc_midnight_and_dst(self):
-        for current, expected in [
-            (datetime(2026, 11, 2, 23, 30, tzinfo=datetime_timezone.utc), (2026, 11, 4, 2)),
-            (datetime(2026, 3, 28, 12, tzinfo=datetime_timezone.utc), (2026, 3, 29, 2)),
-            (datetime(2026, 10, 24, 12, tzinfo=datetime_timezone.utc), (2026, 10, 25, 3)),
+    def test_elapsed_hours_are_exact_across_chisinau_dst_changes(self):
+        for current in [
+            datetime(2026, 3, 28, 12, tzinfo=datetime_timezone.utc),
+            datetime(2026, 10, 24, 12, tzinfo=datetime_timezone.utc),
         ]:
             with self.subTest(current=current):
-                due = learning.next_review(1, current)
-                self.assertEqual((due.year, due.month, due.day), expected[:3])
-                self.assertEqual(due.utcoffset(), timedelta(hours=expected[3]))
+                local_review = timezone.localtime(current)
+                due = learning.next_review(1, local_review)
+                self.assertEqual(due, current + timedelta(hours=24))
 
     def test_repeated_repeat_never_sets_back_more_than_one_stage(self):
         word = Word.objects.create(account_id=OWNER_ACCOUNT_ID, chunk="repeat", stage=4)
@@ -199,14 +204,16 @@ class LearningTests(TestCase):
                 self.assertEqual(word.stage, 2)
 
     def test_setbacks_stop_at_first_stage_and_retry_success_does_not_advance(self):
-        for initial in [0, 1]:
-            word = Word.objects.create(account_id=OWNER_ACCOUNT_ID, chunk="new", stage=initial)
-            learning.start_or_resume(OWNER_ACCOUNT_ID)
-            self.respond("dont_know")
-            self.respond("know")
-            word.refresh_from_db()
-            self.assertEqual(word.stage, 0)
-            self.assertEqual(timezone.localtime(word.due_at).date(), timezone.localdate() + timedelta(days=1))
+        reviewed_at = datetime(2026, 11, 2, 21, 59, tzinfo=datetime_timezone.utc)
+        with patch("cards.learning.timezone.now", return_value=reviewed_at):
+            for initial in [0, 1]:
+                word = Word.objects.create(account_id=OWNER_ACCOUNT_ID, chunk="new", stage=initial, due_at=reviewed_at)
+                learning.start_or_resume(OWNER_ACCOUNT_ID)
+                self.respond("dont_know")
+                self.respond("know")
+                word.refresh_from_db()
+                self.assertEqual(word.stage, 0)
+                self.assertEqual(word.due_at, reviewed_at + timedelta(hours=24))
 
     def test_retry_returns_after_all_other_pending_cards(self):
         words = [Word.objects.create(account_id=OWNER_ACCOUNT_ID, chunk=f"word {index}") for index in range(5)]
