@@ -16,6 +16,8 @@ from django.views.decorators.debug import sensitive_variables
 from .duplicates import existing_obverses, obverse_key
 from .mcp_cards import ADD_TOOL, add_cards
 from .mcp_credentials import credential_hashes
+from .models import LOCAL_TEST_ACCOUNT_ID, OWNER_ACCOUNT_ID
+from .security import local_request, mcp_account_id
 from . import oauth_server
 
 VERSIONS = ("2025-03-26", "2025-06-18", "2025-11-25")
@@ -76,6 +78,9 @@ def auth_required(request_id, scope):
 
 @sensitive_variables()
 def dispatch(request):
+    bearer_account_id = mcp_account_id()
+    if bearer_account_id == LOCAL_TEST_ACCOUNT_ID and not local_request(request):
+        return HttpResponse(status=404)
     try:
         hashes = credential_hashes()
     except DatabaseError:
@@ -91,6 +96,7 @@ def dispatch(request):
     can_read = credential_valid and valid_digest(expected_hash) and constant_time_compare(token_hash, expected_hash)
     can_write = credential_valid and valid_digest(write_hash) and constant_time_compare(token_hash, write_hash)
     legacy = can_read or can_write
+    account_id = bearer_account_id if legacy else OWNER_ACCOUNT_ID
     if oauth_enabled and not legacy and credential_valid:
         try:
             scopes = oauth_server.access_scopes(token_hash)
@@ -169,7 +175,7 @@ def dispatch(request):
                     return auth_required(request_id, "cards:add")
                 return rpc_error(request_id, -32602, "This connection has read-only access.")
             try:
-                data = add_cards(params.get("arguments", {}))
+                data = add_cards(account_id, params.get("arguments", {}))
             except ValueError as error:
                 return rpc_error(request_id, -32602, str(error))
             except DatabaseError:
@@ -194,7 +200,7 @@ def dispatch(request):
                 or any(not isinstance(p, str) or not p.strip() or len(p) > 300 for p in phrases)):
             return rpc_error(request_id, -32602, "Provide 1–100 nonblank phrases, each at most 300 characters.")
         try:
-            known = existing_obverses()
+            known = existing_obverses(account_id)
         except DatabaseError:
             # Never include private database details in tool responses or tracebacks.
             return JsonResponse({"jsonrpc": "2.0", "id": request_id, "result": {

@@ -47,7 +47,7 @@ ADD_TOOL = {
 
 
 @sensitive_variables()
-def add_cards(arguments):
+def add_cards(account_id, arguments):
     if (not isinstance(arguments, dict) or set(arguments) != {"batch_id", "cards", "approved"}
             or arguments["approved"] is not True):
         raise ValueError("Explicit approval of the exact cards is required; provide batch_id, cards and approved=true.")
@@ -70,15 +70,17 @@ def add_cards(arguments):
         rows.append(form.cleaned_data)
     payload_hash = hashlib.sha256(json.dumps(cards, sort_keys=True, ensure_ascii=True).encode()).hexdigest()
     with transaction.atomic():
-        learning.lock_preferences()
+        learning.lock_preferences(account_id)
         receipt = McpCardBatch.objects.filter(pk=batch_id).first()
         replayed = receipt is not None
         if receipt and receipt.payload_hash != payload_hash:
             raise ValueError("This batch_id belongs to different cards. A changed batch needs new approval and a new ID.")
         if not receipt:
-            new_rows = [row for row in classify_rows(rows) if not row["duplicate"]]
-            Word.objects.bulk_create([Word(chunk=row["chunk"], meaning=row["meaning"], example=row["example"])
-                                      for row in new_rows])
+            new_rows = [row for row in classify_rows(account_id, rows) if not row["duplicate"]]
+            Word.objects.bulk_create([
+                Word(account_id=account_id, chunk=row["chunk"], meaning=row["meaning"], example=row["example"])
+                for row in new_rows
+            ])
             receipt = McpCardBatch.objects.create(id=batch_id, payload_hash=payload_hash,
                                                   added_count=len(new_rows), skipped_count=len(rows) - len(new_rows))
     return {"batch_id": str(receipt.pk), "added_count": receipt.added_count,

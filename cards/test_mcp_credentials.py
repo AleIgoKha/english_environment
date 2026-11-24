@@ -6,10 +6,9 @@ from django.test import Client, TestCase, override_settings
 from django.urls import reverse
 
 from .models import McpBearerCredential
-from .security import auth_version
 from .test_mcp import TEST_TOKEN, TOKEN_HASH
 from .test_mcp_write import WRITE_TOKEN, WRITE_HASH
-from .tests import GOOGLE_SETTINGS
+from .tests import GOOGLE_SETTINGS, login_owner
 
 
 @override_settings(**GOOGLE_SETTINGS, CARDY_MCP_TOKEN_SHA256=TOKEN_HASH,
@@ -19,10 +18,7 @@ class McpCredentialTests(TestCase):
         self.login_owner(self.client)
 
     def login_owner(self, client):
-        session = client.session
-        session.update({"auth_kind": "google", "google_email": "owner@example.test",
-                        "google_subject": "owner", "auth_version": auth_version()})
-        session.save()
+        login_owner(client, "owner")
 
     def generate(self, role, client=None, **kwargs):
         return (client or self.client).post(reverse("mcp-token-generate", args=[role]), secure=True, **kwargs)
@@ -88,10 +84,7 @@ class McpCredentialTests(TestCase):
 
     @override_settings(DEBUG=True, LOCAL_TEST_LOGIN=True, RAILWAY_ENVIRONMENT_ID="", LOCAL_TEST_NETWORK="192.168.0.0/24")
     def test_local_preview_uses_test_deck_url_and_stays_unavailable_in_production(self):
-        session = self.client.session
-        session.clear()
-        session["auth_kind"] = "local-test"
-        session.save()
+        self.assertRedirects(self.client.post(reverse("local-test-login")), reverse("home"))
         page = self.client.get(reverse("learning-settings"), HTTP_HOST="localhost")
         self.assertEqual(page.status_code, 200)
         self.assertContains(page, 'value="http://localhost/mcp/"')

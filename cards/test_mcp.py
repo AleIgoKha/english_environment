@@ -9,7 +9,7 @@ from django.urls import reverse
 from django.utils import timezone
 
 from .mcp import MAX_BYTES
-from .models import Word, WordImport, StudySession, StudyReview
+from .models import OWNER_ACCOUNT_ID, Word, WordImport, StudySession, StudyReview
 
 TEST_TOKEN = "disposable-mcp-test-token-not-a-real-credential"
 TOKEN_HASH = hashlib.sha256(TEST_TOKEN.encode()).hexdigest()
@@ -81,9 +81,9 @@ class McpTests(TestCase):
         self.assertEqual(notification.content, b"")
 
     def test_matches_include_learned_cards_without_exposing_private_card_details_or_writing(self):
-        Word.objects.create(chunk="Take your time", meaning="private reverse", example="private extra")
-        Word.objects.create(chunk="hello", archived_at=timezone.now(), stage=5)
-        Word.objects.create(chunk="unrequested private card")
+        Word.objects.create(account_id=OWNER_ACCOUNT_ID, chunk="Take your time", meaning="private reverse", example="private extra")
+        Word.objects.create(account_id=OWNER_ACCOUNT_ID, chunk="hello", archived_at=timezone.now(), stage=5)
+        Word.objects.create(account_id=OWNER_ACCOUNT_ID, chunk="unrequested private card")
         phrases = [" TAKE  YOUR\u00a0TIME ", "ＨＥＬＬＯ", "new phrase", "a paraphrase"]
         before = list(Word.objects.values())
         with self.assertNumQueries(2):

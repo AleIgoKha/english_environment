@@ -9,31 +9,28 @@ from django.urls import reverse
 from django.utils import timezone
 
 from . import learning
-from .models import LearningSettings, StudySession, Word
-from .security import auth_version
-from .tests import GOOGLE_SETTINGS
+from .models import OWNER_ACCOUNT_ID, LearningSettings, StudySession, Word
+from .tests import GOOGLE_SETTINGS, login_owner
 
 
 @override_settings(**GOOGLE_SETTINGS)
 class LearningTests(TestCase):
     def setUp(self):
-        session = self.client.session
-        session.update({"auth_kind": "google", "google_email": "owner@example.test", "google_subject": "test-owner", "auth_version": auth_version()})
-        session.save()
+        login_owner(self.client, "test-owner")
 
     def respond(self, choice="know"):
-        session = learning.active_session()
-        learning.reveal(session.response_token)
-        learning.answer(session.response_token, choice)
+        session = learning.active_session(OWNER_ACCOUNT_ID)
+        learning.reveal(OWNER_ACCOUNT_ID, session.response_token)
+        learning.answer(OWNER_ACCOUNT_ID, session.response_token, choice)
         session.refresh_from_db()
         return session
 
     def test_start_includes_only_new_and_due_words_in_due_order(self):
-        newer = Word.objects.create(chunk="new")
-        older = Word.objects.create(chunk="overdue", due_at=timezone.now() - timedelta(days=2), stage=3)
-        Word.objects.create(chunk="future", due_at=timezone.now() + timedelta(days=1))
-        Word.objects.create(chunk="learned", archived_at=timezone.now())
-        session = learning.start_or_resume()
+        newer = Word.objects.create(account_id=OWNER_ACCOUNT_ID, chunk="new")
+        older = Word.objects.create(account_id=OWNER_ACCOUNT_ID, chunk="overdue", due_at=timezone.now() - timedelta(days=2), stage=3)
+        Word.objects.create(account_id=OWNER_ACCOUNT_ID, chunk="future", due_at=timezone.now() + timedelta(days=1))
+        Word.objects.create(account_id=OWNER_ACCOUNT_ID, chunk="learned", archived_at=timezone.now())
+        session = learning.start_or_resume(OWNER_ACCOUNT_ID)
         self.assertEqual(session.queue, [older.pk, newer.pk])
         self.assertEqual(session.initial_stages, {str(older.pk): 3, str(newer.pk): 0})
         self.assertEqual(session.total_words, 2)
@@ -41,30 +38,30 @@ class LearningTests(TestCase):
     def test_empty_deck_waits_in_an_open_session(self):
         response = self.client.post(reverse("study-start"), follow=True)
         self.assertContains(response, "Well done!")
-        self.assertEqual(learning.active_session().queue, [])
+        self.assertEqual(learning.active_session(OWNER_ACCOUNT_ID).queue, [])
         self.assertIsNone(StudySession.objects.get().completed_at)
 
     def test_start_resumes_and_appends_new_words_to_the_same_session(self):
-        word = Word.objects.create(chunk="first")
-        first = learning.start_or_resume()
-        added = Word.objects.create(chunk="added later")
-        again = learning.start_or_resume()
+        word = Word.objects.create(account_id=OWNER_ACCOUNT_ID, chunk="first")
+        first = learning.start_or_resume(OWNER_ACCOUNT_ID)
+        added = Word.objects.create(account_id=OWNER_ACCOUNT_ID, chunk="added later")
+        again = learning.start_or_resume(OWNER_ACCOUNT_ID)
         self.assertEqual(first.pk, again.pk)
         self.assertEqual(again.queue, [word.pk, added.pk])
         self.assertEqual(StudySession.objects.count(), 1)
         self.respond()
-        next_session = learning.start_or_resume()
+        next_session = learning.start_or_resume(OWNER_ACCOUNT_ID)
         self.assertEqual(next_session.pk, first.pk)
         self.assertEqual(len(next_session.queue), 1)
 
     def test_reveal_is_required_and_is_saved_on_server(self):
-        word = Word.objects.create(chunk="visible chunk", meaning="hidden meaning", example="hidden example")
-        session = learning.start_or_resume()
+        word = Word.objects.create(account_id=OWNER_ACCOUNT_ID, chunk="visible chunk", meaning="hidden meaning", example="hidden example")
+        session = learning.start_or_resume(OWNER_ACCOUNT_ID)
         response = self.client.get(reverse("study"))
         self.assertContains(response, word.chunk)
         self.assertNotContains(response, "hidden meaning")
         self.assertNotContains(response, "hidden example")
-        learning.answer(session.response_token, "know")
+        learning.answer(OWNER_ACCOUNT_ID, session.response_token, "know")
         word.refresh_from_db()
         self.assertEqual(word.stage, 0)
         self.client.post(reverse("study-reveal"), {"response_token": session.response_token})
@@ -77,24 +74,24 @@ class LearningTests(TestCase):
         self.assertIn("no-store", response["Cache-Control"])
 
     def test_chunk_only_can_be_revealed_and_reviewed(self):
-        word = Word.objects.create(chunk="hello")
-        session = learning.start_or_resume()
-        learning.reveal(session.response_token)
+        word = Word.objects.create(account_id=OWNER_ACCOUNT_ID, chunk="hello")
+        session = learning.start_or_resume(OWNER_ACCOUNT_ID)
+        learning.reveal(OWNER_ACCOUNT_ID, session.response_token)
         self.assertContains(self.client.get(reverse("study")), "No reverse or extra added.")
         self.respond()
         word.refresh_from_db()
         self.assertEqual(word.stage, 1)
 
     def test_show_reverse_immediately_can_be_answered_without_reveal(self):
-        word = Word.objects.create(chunk="visible", meaning="answer text", example="extra text",
+        word = Word.objects.create(account_id=OWNER_ACCOUNT_ID, chunk="visible", meaning="answer text", example="extra text",
                                    show_reverse_immediately=True)
-        next_word = Word.objects.create(chunk="next", meaning="keep hidden")
+        next_word = Word.objects.create(account_id=OWNER_ACCOUNT_ID, chunk="next", meaning="keep hidden")
         response = self.client.post(reverse("study-start"), follow=True)
         self.assertContains(response, "answer text")
         self.assertContains(response, "extra text")
         self.assertNotContains(response, "Reveal answer")
         self.assertContains(response, "Don't know")
-        session = learning.active_session()
+        session = learning.active_session(OWNER_ACCOUNT_ID)
         self.client.post(reverse("study-answer"), {"response_token": session.response_token, "answer": "know"})
         word.refresh_from_db()
         self.assertEqual(word.stage, 1)
@@ -105,35 +102,35 @@ class LearningTests(TestCase):
         self.assertFalse(next_word.show_reverse_immediately)
 
     def test_automatic_reverse_is_applied_after_repeat_and_undo(self):
-        word = Word.objects.create(chunk="visible", meaning="answer text", show_reverse_immediately=True)
-        session, _ = learning.study_state()
-        learning.answer(session.response_token, "repeat")
-        session, _ = learning.study_state()
+        word = Word.objects.create(account_id=OWNER_ACCOUNT_ID, chunk="visible", meaning="answer text", show_reverse_immediately=True)
+        session, _ = learning.study_state(OWNER_ACCOUNT_ID)
+        learning.answer(OWNER_ACCOUNT_ID, session.response_token, "repeat")
+        session, _ = learning.study_state(OWNER_ACCOUNT_ID)
         self.assertTrue(session.revealed)
-        learning.answer(session.response_token, "know")
+        learning.answer(OWNER_ACCOUNT_ID, session.response_token, "know")
         session.refresh_from_db()
-        learning.undo(session.response_token)
-        session, current_word = learning.study_state()
+        learning.undo(OWNER_ACCOUNT_ID, session.response_token)
+        session, current_word = learning.study_state(OWNER_ACCOUNT_ID)
         self.assertEqual(current_word.pk, word.pk)
         self.assertTrue(session.revealed)
 
     def test_know_advances_once_and_is_not_due_again_the_same_day(self):
-        word = Word.objects.create(chunk="remember")
-        learning.start_or_resume()
+        word = Word.objects.create(account_id=OWNER_ACCOUNT_ID, chunk="remember")
+        learning.start_or_resume(OWNER_ACCOUNT_ID)
         session = self.respond()
         word.refresh_from_db()
         self.assertEqual(word.stage, 1)
         self.assertIsNone(session.completed_at)
         self.assertIsNone(word.archived_at)
         self.assertEqual(timezone.localtime(word.due_at).date(), timezone.localdate() + timedelta(days=1))
-        self.assertEqual(learning.start_or_resume().queue, [])
+        self.assertEqual(learning.start_or_resume(OWNER_ACCOUNT_ID).queue, [])
 
     def test_five_spaced_successes_use_expected_gaps_then_archive(self):
         current = datetime(2026, 11, 2, 12, tzinfo=datetime_timezone.utc)
-        word = Word.objects.create(chunk="progress", due_at=current)
+        word = Word.objects.create(account_id=OWNER_ACCOUNT_ID, chunk="progress", due_at=current)
         for stage in range(1, 6):
             with self.subTest(stage=stage), patch("cards.learning.timezone.now", return_value=current):
-                learning.start_or_resume()
+                learning.start_or_resume(OWNER_ACCOUNT_ID)
                 self.respond()
                 word.refresh_from_db()
                 self.assertEqual(word.stage, stage)
@@ -167,8 +164,8 @@ class LearningTests(TestCase):
                 self.assertEqual(due.utcoffset(), timedelta(hours=expected[3]))
 
     def test_repeated_repeat_never_sets_back_more_than_one_stage(self):
-        word = Word.objects.create(chunk="repeat", stage=4)
-        learning.start_or_resume()
+        word = Word.objects.create(account_id=OWNER_ACCOUNT_ID, chunk="repeat", stage=4)
+        learning.start_or_resume(OWNER_ACCOUNT_ID)
         for attempt in range(3):
             session = self.respond("repeat")
             word.refresh_from_db()
@@ -177,11 +174,11 @@ class LearningTests(TestCase):
         self.respond("know")
         word.refresh_from_db()
         self.assertEqual(word.stage, 3)
-        self.assertEqual(learning.active_session().queue, [])
+        self.assertEqual(learning.active_session(OWNER_ACCOUNT_ID).queue, [])
 
     def test_repeated_dont_know_never_sets_back_more_than_two_stages(self):
-        word = Word.objects.create(chunk="difficult", stage=4)
-        learning.start_or_resume()
+        word = Word.objects.create(account_id=OWNER_ACCOUNT_ID, chunk="difficult", stage=4)
+        learning.start_or_resume(OWNER_ACCOUNT_ID)
         for attempt in range(3):
             self.respond("dont_know")
             word.refresh_from_db()
@@ -193,8 +190,8 @@ class LearningTests(TestCase):
     def test_mixed_setbacks_use_maximum_not_sum_in_either_order(self):
         for sequence in [("repeat", "dont_know", "repeat"), ("dont_know", "repeat", "dont_know")]:
             with self.subTest(sequence=sequence):
-                word = Word.objects.create(chunk="mixed", stage=4)
-                learning.start_or_resume()
+                word = Word.objects.create(account_id=OWNER_ACCOUNT_ID, chunk="mixed", stage=4)
+                learning.start_or_resume(OWNER_ACCOUNT_ID)
                 for choice in sequence:
                     self.respond(choice)
                 self.respond()
@@ -203,8 +200,8 @@ class LearningTests(TestCase):
 
     def test_setbacks_stop_at_first_stage_and_retry_success_does_not_advance(self):
         for initial in [0, 1]:
-            word = Word.objects.create(chunk="new", stage=initial)
-            learning.start_or_resume()
+            word = Word.objects.create(account_id=OWNER_ACCOUNT_ID, chunk="new", stage=initial)
+            learning.start_or_resume(OWNER_ACCOUNT_ID)
             self.respond("dont_know")
             self.respond("know")
             word.refresh_from_db()
@@ -212,30 +209,30 @@ class LearningTests(TestCase):
             self.assertEqual(timezone.localtime(word.due_at).date(), timezone.localdate() + timedelta(days=1))
 
     def test_retry_returns_after_all_other_pending_cards(self):
-        words = [Word.objects.create(chunk=f"word {index}") for index in range(5)]
-        learning.start_or_resume()
+        words = [Word.objects.create(account_id=OWNER_ACCOUNT_ID, chunk=f"word {index}") for index in range(5)]
+        learning.start_or_resume(OWNER_ACCOUNT_ID)
         session = self.respond("repeat")
         self.assertEqual(session.queue, [words[1].pk, words[2].pk, words[3].pk, words[4].pk, words[0].pk])
         for index in [1, 2, 3, 4]:
-            self.assertEqual(learning.active_session().queue[0], words[index].pk)
+            self.assertEqual(learning.active_session(OWNER_ACCOUNT_ID).queue[0], words[index].pk)
             self.respond()
-        self.assertEqual(learning.active_session().queue[0], words[0].pk)
+        self.assertEqual(learning.active_session(OWNER_ACCOUNT_ID).queue[0], words[0].pk)
 
     def test_retry_goes_to_end_of_short_queue(self):
-        first = Word.objects.create(chunk="first")
-        second = Word.objects.create(chunk="second")
-        learning.start_or_resume()
+        first = Word.objects.create(account_id=OWNER_ACCOUNT_ID, chunk="first")
+        second = Word.objects.create(account_id=OWNER_ACCOUNT_ID, chunk="second")
+        learning.start_or_resume(OWNER_ACCOUNT_ID)
         self.assertEqual(self.respond("dont_know").queue, [second.pk, first.pk])
 
     def test_double_submission_cannot_apply_to_the_next_card(self):
-        first = Word.objects.create(chunk="first")
-        second = Word.objects.create(chunk="second")
-        session = learning.start_or_resume()
+        first = Word.objects.create(account_id=OWNER_ACCOUNT_ID, chunk="first")
+        second = Word.objects.create(account_id=OWNER_ACCOUNT_ID, chunk="second")
+        session = learning.start_or_resume(OWNER_ACCOUNT_ID)
         old_token = session.response_token
-        learning.reveal(old_token)
-        learning.answer(old_token, "know")
-        learning.answer(old_token, "know")
-        learning.reveal(old_token)
+        learning.reveal(OWNER_ACCOUNT_ID, old_token)
+        learning.answer(OWNER_ACCOUNT_ID, old_token, "know")
+        learning.answer(OWNER_ACCOUNT_ID, old_token, "know")
+        learning.reveal(OWNER_ACCOUNT_ID, old_token)
         first.refresh_from_db()
         second.refresh_from_db()
         session.refresh_from_db()
@@ -244,24 +241,24 @@ class LearningTests(TestCase):
         self.assertFalse(session.revealed)
 
     def test_duplicate_retry_token_cannot_answer_the_same_card_again(self):
-        word = Word.objects.create(chunk="only word", stage=4)
-        session = learning.start_or_resume()
-        learning.reveal(session.response_token)
+        word = Word.objects.create(account_id=OWNER_ACCOUNT_ID, chunk="only word", stage=4)
+        session = learning.start_or_resume(OWNER_ACCOUNT_ID)
+        learning.reveal(OWNER_ACCOUNT_ID, session.response_token)
         old_token = session.response_token
-        learning.answer(old_token, "repeat")
-        learning.answer(old_token, "dont_know")
+        learning.answer(OWNER_ACCOUNT_ID, old_token, "repeat")
+        learning.answer(OWNER_ACCOUNT_ID, old_token, "dont_know")
         word.refresh_from_db()
         self.assertEqual(word.stage, 3)
-        self.assertFalse(learning.active_session().revealed)
+        self.assertFalse(learning.active_session(OWNER_ACCOUNT_ID).revealed)
 
     def test_resume_from_another_browser_preserves_setback_limit(self):
-        word = Word.objects.create(chunk="remember", stage=4)
-        initial = learning.start_or_resume()
+        word = Word.objects.create(account_id=OWNER_ACCOUNT_ID, chunk="remember", stage=4)
+        initial = learning.start_or_resume(OWNER_ACCOUNT_ID)
         self.respond("repeat")
         reopened = Client()
         reopened.cookies = self.client.cookies.copy()
         self.assertRedirects(reopened.post(reverse("study-start")), reverse("study"))
-        session = learning.active_session()
+        session = learning.active_session(OWNER_ACCOUNT_ID)
         self.assertEqual(session.pk, initial.pk)
         self.respond("repeat")
         self.respond("know")
@@ -269,12 +266,12 @@ class LearningTests(TestCase):
         self.assertEqual(word.stage, 3)
 
     def test_failed_session_save_rolls_back_word_progress_too(self):
-        word = Word.objects.create(chunk="atomic")
-        session = learning.start_or_resume()
-        learning.reveal(session.response_token)
+        word = Word.objects.create(account_id=OWNER_ACCOUNT_ID, chunk="atomic")
+        session = learning.start_or_resume(OWNER_ACCOUNT_ID)
+        learning.reveal(OWNER_ACCOUNT_ID, session.response_token)
         with patch.object(StudySession, "save", side_effect=RuntimeError("simulated database failure")):
             with self.assertRaises(RuntimeError):
-                learning.answer(session.response_token, "know")
+                learning.answer(OWNER_ACCOUNT_ID, session.response_token, "know")
         word.refresh_from_db()
         session.refresh_from_db()
         self.assertEqual(word.stage, 0)
@@ -282,48 +279,48 @@ class LearningTests(TestCase):
         self.assertTrue(session.revealed)
 
     def test_deleted_current_word_is_skipped_and_stale_form_cannot_answer_replacement(self):
-        first = Word.objects.create(chunk="delete me")
-        second = Word.objects.create(chunk="keep me")
-        session = learning.start_or_resume()
-        learning.reveal(session.response_token)
+        first = Word.objects.create(account_id=OWNER_ACCOUNT_ID, chunk="delete me")
+        second = Word.objects.create(account_id=OWNER_ACCOUNT_ID, chunk="keep me")
+        session = learning.start_or_resume(OWNER_ACCOUNT_ID)
+        learning.reveal(OWNER_ACCOUNT_ID, session.response_token)
         old_token = session.response_token
         self.client.post(reverse("word-delete", args=[first.pk]))
         response = self.client.get(reverse("study"))
         self.assertContains(response, "keep me")
-        learning.answer(old_token, "know")
+        learning.answer(OWNER_ACCOUNT_ID, old_token, "know")
         second.refresh_from_db()
         self.assertEqual(second.stage, 0)
-        self.assertFalse(learning.active_session().revealed)
+        self.assertFalse(learning.active_session(OWNER_ACCOUNT_ID).revealed)
 
     def test_deleting_last_pending_word_leaves_session_waiting(self):
-        word = Word.objects.create(chunk="delete")
-        learning.start_or_resume()
+        word = Word.objects.create(account_id=OWNER_ACCOUNT_ID, chunk="delete")
+        learning.start_or_resume(OWNER_ACCOUNT_ID)
         self.client.post(reverse("word-delete", args=[word.pk]))
         self.assertContains(self.client.get(reverse("study")), "Well done!")
-        self.assertEqual(learning.active_session().queue, [])
+        self.assertEqual(learning.active_session(OWNER_ACCOUNT_ID).queue, [])
 
     def test_only_one_open_session_allowed_by_database(self):
-        Word.objects.create(chunk="one")
-        learning.start_or_resume()
+        Word.objects.create(account_id=OWNER_ACCOUNT_ID, chunk="one")
+        learning.start_or_resume(OWNER_ACCOUNT_ID)
         with self.assertRaises(IntegrityError), transaction.atomic():
-            StudySession.objects.create()
+            StudySession.objects.create(account_id=OWNER_ACCOUNT_ID)
 
     def test_default_and_settings_validation(self):
-        self.assertEqual(LearningSettings.objects.get(pk=1).review_target, 5)
+        self.assertEqual(LearningSettings.objects.get(account_id=OWNER_ACCOUNT_ID).review_target, 5)
         for value in ["0", "11", "", "1.5", "abc"]:
             with self.subTest(value=value):
                 response = self.client.post(reverse("learning-settings"), {"review_target": value})
                 self.assertEqual(response.status_code, 200)
                 self.assertIn("review_target", response.context["form"].errors)
-                self.assertEqual(LearningSettings.objects.get(pk=1).review_target, 5)
+                self.assertEqual(LearningSettings.objects.get(account_id=OWNER_ACCOUNT_ID).review_target, 5)
         for target in [1, 10]:
             self.assertRedirects(self.client.post(reverse("learning-settings"), {"review_target": target}), reverse("learning-settings-saved"))
-            self.assertEqual(LearningSettings.objects.get(pk=1).review_target, target)
+            self.assertEqual(LearningSettings.objects.get(account_id=OWNER_ACCOUNT_ID).review_target, target)
 
     def test_settings_changes_do_not_rewrite_words_or_dates(self):
         due_at = timezone.now() + timedelta(days=7)
-        active = Word.objects.create(chunk="active", stage=4, due_at=due_at)
-        archived = Word.objects.create(chunk="learned", stage=5, archived_at=timezone.now())
+        active = Word.objects.create(account_id=OWNER_ACCOUNT_ID, chunk="active", stage=4, due_at=due_at)
+        archived = Word.objects.create(account_id=OWNER_ACCOUNT_ID, chunk="learned", stage=5, archived_at=timezone.now())
         self.client.post(reverse("learning-settings"), {"review_target": "1"})
         active.refresh_from_db()
         archived.refresh_from_db()
@@ -337,10 +334,10 @@ class LearningTests(TestCase):
         invalid = self.client.post(url, {"review_target": "11"}, HTTP_ACCEPT="application/json")
         self.assertEqual(invalid.status_code, 400)
         self.assertIn("review_target", invalid.json()["errors"])
-        self.assertEqual(LearningSettings.objects.get(pk=1).review_target, 5)
+        self.assertEqual(LearningSettings.objects.get(account_id=OWNER_ACCOUNT_ID).review_target, 5)
         saved = self.client.post(url, {"review_target": "7"}, HTTP_ACCEPT="application/json")
         self.assertEqual(saved.json(), {"saved": True})
-        self.assertEqual(LearningSettings.objects.get(pk=1).review_target, 7)
+        self.assertEqual(LearningSettings.objects.get(account_id=OWNER_ACCOUNT_ID).review_target, 7)
 
     def test_invalid_settings_on_saved_page_do_not_claim_success(self):
         response = self.client.post(reverse("learning-settings-saved"), {"review_target": "0"})
@@ -348,28 +345,28 @@ class LearningTests(TestCase):
         self.assertNotContains(response, ">Saved</button>")
 
     def test_changed_target_applies_to_next_answer_in_existing_session(self):
-        word = Word.objects.create(chunk="learn me")
-        learning.start_or_resume()
+        word = Word.objects.create(account_id=OWNER_ACCOUNT_ID, chunk="learn me")
+        learning.start_or_resume(OWNER_ACCOUNT_ID)
         self.client.post(reverse("learning-settings"), {"review_target": "1"})
         self.respond()
         word.refresh_from_db()
         self.assertIsNotNone(word.archived_at)
 
     def test_target_ten_does_not_archive_early_and_restored_words_start_fresh(self):
-        learning.change_target(10)
-        word = Word.objects.create(chunk="keep learning", stage=8)
-        learning.start_or_resume()
+        learning.change_target(OWNER_ACCOUNT_ID, 10)
+        word = Word.objects.create(account_id=OWNER_ACCOUNT_ID, chunk="keep learning", stage=8)
+        learning.start_or_resume(OWNER_ACCOUNT_ID)
         self.respond()
         word.refresh_from_db()
         self.assertEqual(word.stage, 9)
         self.assertIsNone(word.archived_at)
         with patch("cards.learning.timezone.now", return_value=word.due_at):
-            learning.start_or_resume()
+            learning.start_or_resume(OWNER_ACCOUNT_ID)
             self.respond()
         word.refresh_from_db()
         self.assertIsNotNone(word.archived_at)
         self.client.post(reverse("word-restore", args=[word.pk]))
-        fresh = learning.start_or_resume()
+        fresh = learning.start_or_resume(OWNER_ACCOUNT_ID)
         self.assertEqual(fresh.initial_stages[str(word.pk)], 0)
 
     def test_study_and_settings_routes_require_login(self):
@@ -389,23 +386,23 @@ class LearningTests(TestCase):
         self.assertEqual(StudySession.objects.count(), 0)
 
     def test_invalid_actions_do_not_mutate_progress(self):
-        word = Word.objects.create(chunk="safe")
-        session = learning.start_or_resume()
+        word = Word.objects.create(account_id=OWNER_ACCOUNT_ID, chunk="safe")
+        session = learning.start_or_resume(OWNER_ACCOUNT_ID)
         for name, payload in [
             ("study-reveal", {}),
             ("study-answer", {"response_token": "broken", "answer": "know"}),
             ("study-answer", {"response_token": session.response_token, "answer": "invented"}),
         ]:
             self.assertEqual(self.client.post(reverse(name), payload).status_code, 400)
-        learning.reveal(uuid.uuid4())
+        learning.reveal(OWNER_ACCOUNT_ID, uuid.uuid4())
         word.refresh_from_db()
         self.assertEqual(word.stage, 0)
-        self.assertFalse(learning.active_session().revealed)
+        self.assertFalse(learning.active_session(OWNER_ACCOUNT_ID).revealed)
 
     def test_full_http_flow_and_summary(self):
-        Word.objects.create(chunk="practice", meaning="a useful habit")
+        Word.objects.create(account_id=OWNER_ACCOUNT_ID, chunk="practice", meaning="a useful habit")
         self.assertRedirects(self.client.post(reverse("study-start")), reverse("study"))
-        session = learning.active_session()
+        session = learning.active_session(OWNER_ACCOUNT_ID)
         self.assertRedirects(self.client.post(reverse("study-reveal"), {"response_token": session.response_token}), reverse("study"))
         self.assertRedirects(self.client.post(reverse("study-answer"), {"response_token": session.response_token, "answer": "know"}), reverse("study"))
         self.assertContains(self.client.get(reverse("study")), "Well done!")
@@ -413,37 +410,37 @@ class LearningTests(TestCase):
 
 
     def test_reset_during_session_invalidates_old_answer_and_restarts_baseline(self):
-        word = Word.objects.create(chunk="reset me", stage=3)
-        session = learning.start_or_resume()
-        learning.reveal(session.response_token)
+        word = Word.objects.create(account_id=OWNER_ACCOUNT_ID, chunk="reset me", stage=3)
+        session = learning.start_or_resume(OWNER_ACCOUNT_ID)
+        learning.reveal(OWNER_ACCOUNT_ID, session.response_token)
         old_token = session.response_token
-        learning.answer(old_token, "repeat")
+        learning.answer(OWNER_ACCOUNT_ID, old_token, "repeat")
         session.refresh_from_db()
-        learning.reveal(session.response_token)
+        learning.reveal(OWNER_ACCOUNT_ID, session.response_token)
         stale_token = session.response_token
-        learning.reset_word(word.pk)
-        learning.answer(stale_token, "know")
+        learning.reset_word(OWNER_ACCOUNT_ID, word.pk)
+        learning.answer(OWNER_ACCOUNT_ID, stale_token, "know")
         word.refresh_from_db()
         self.assertEqual(word.stage, 0)
         session.refresh_from_db()
         self.assertEqual(session.initial_stages[str(word.pk)], 0)
         self.assertNotIn(str(word.pk), session.setbacks)
         self.assertFalse(session.revealed)
-        learning.reveal(session.response_token)
-        learning.answer(session.response_token, "know")
+        learning.reveal(OWNER_ACCOUNT_ID, session.response_token)
+        learning.answer(OWNER_ACCOUNT_ID, session.response_token, "know")
         word.refresh_from_db()
         self.assertEqual(word.stage, 1)
 
     def test_bulk_delete_prunes_queue_and_stale_answer_cannot_apply(self):
-        first = Word.objects.create(chunk="first")
-        second = Word.objects.create(chunk="second")
-        session = learning.start_or_resume()
-        learning.reveal(session.response_token)
+        first = Word.objects.create(account_id=OWNER_ACCOUNT_ID, chunk="first")
+        second = Word.objects.create(account_id=OWNER_ACCOUNT_ID, chunk="second")
+        session = learning.start_or_resume(OWNER_ACCOUNT_ID)
+        learning.reveal(OWNER_ACCOUNT_ID, session.response_token)
         old_token = session.response_token
         self.client.post(reverse("word-bulk"), {"word_ids": [first.pk], "action": "delete", "confirmed": "yes"})
         session.refresh_from_db()
         self.assertEqual(session.queue, [second.pk])
         self.assertNotEqual(session.response_token, old_token)
-        learning.answer(old_token, "know")
+        learning.answer(OWNER_ACCOUNT_ID, old_token, "know")
         second.refresh_from_db()
         self.assertEqual(second.stage, 0)

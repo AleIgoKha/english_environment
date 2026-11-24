@@ -69,17 +69,18 @@ def parse_csv(upload):
 
 
 @transaction.atomic
-def confirm_import(import_id):
+def confirm_import(account_id, import_id):
     # Serialize imports and study changes. A repeated confirmation cannot add twice.
-    learning.lock_preferences()
-    batch = WordImport.objects.select_for_update().get(pk=import_id)
+    learning.lock_preferences(account_id)
+    batch = WordImport.objects.select_for_update().get(account_id=account_id, pk=import_id)
     if batch.imported_at:
         return batch
     if batch.created_at < timezone.now() - PREVIEW_LIFETIME:
         raise ValidationError("This preview expired. Upload the CSV again.")
-    # Check again under the shared lock: the deck may have changed since preview.
-    rows = [row for row in classify_rows(batch.rows) if not row["duplicate"]]
-    new_words = [Word(chunk=row["chunk"], meaning=row["meaning"], example=row["example"]) for row in rows]
+    # Check again under the account lock: the deck may have changed since preview.
+    rows = [row for row in classify_rows(account_id, batch.rows) if not row["duplicate"]]
+    new_words = [Word(account_id=account_id, chunk=row["chunk"], meaning=row["meaning"], example=row["example"])
+                 for row in rows]
     Word.objects.bulk_create(new_words)
     batch.added_count = len(new_words)
     batch.skipped_count = len(batch.rows) - len(new_words)

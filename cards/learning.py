@@ -12,14 +12,15 @@ from .models import LearningSettings, StudyReview, StudySession, Word
 REVIEW_GAPS = (1, 3, 7, 14, 30, 60, 120, 240, 365)
 
 
-def lock_preferences():
+def lock_preferences(account_id):
     """Call inside a transaction, before any study or word-state mutation.
 
     The initial write takes a lock on both SQLite and PostgreSQL. Locking this
-    singleton also prevents simultaneous Start requests from creating two queues.
+    account's settings row also prevents simultaneous Start requests from creating two queues.
     """
-    LearningSettings.objects.filter(pk=1).update(review_target=F("review_target"))
-    return LearningSettings.objects.select_for_update().get(pk=1)
+    preferences = LearningSettings.objects.filter(account_id=account_id)
+    preferences.update(review_target=F("review_target"))
+    return preferences.select_for_update().get()
 
 
 def next_review(stage, now):
@@ -29,13 +30,13 @@ def next_review(stage, now):
     return datetime.combine(due_date, time.min, tzinfo=local_zone)
 
 
-def active_session():
-    return StudySession.objects.filter(completed_at__isnull=True).first()
+def active_session(account_id):
+    return StudySession.objects.filter(account_id=account_id, completed_at__isnull=True).first()
 
 
-def clear_undo_history():
+def clear_undo_history(account_id):
     """Call under the preferences lock when starting over or changing the deck."""
-    StudyReview.objects.all().delete()
+    StudyReview.objects.filter(session__account_id=account_id).delete()
 
 
 def can_undo(session):
@@ -54,11 +55,12 @@ def word_progress(word, include_deleted=False):
 
 
 @transaction.atomic
-def delete_words(word_ids, from_study=False):
+def delete_words(account_id, word_ids, from_study=False):
     """Only deletion from Learning is reversible through the study Undo stack."""
-    lock_preferences()
-    words = list(Word.objects.filter(pk__in=word_ids))
-    session = active_session()
+    lock_preferences(account_id)
+    deck = Word.objects.filter(account_id=account_id)
+    words = list(deck.filter(pk__in=word_ids))
+    session = active_session(account_id)
     reversible = bool(from_study and len(words) == 1 and session and words[0].pk in session.queue)
     if reversible:
         word = words[0]
@@ -66,14 +68,14 @@ def delete_words(word_ids, from_study=False):
         snapshot = {"queue": list(session.queue), "initial_stages": dict(session.initial_stages),
                     "setbacks": dict(session.setbacks)}
     ids = [word.pk for word in words]
-    count, _ = Word.objects.filter(pk__in=ids).delete()
+    count, _ = deck.filter(pk__in=ids).delete()
     if reversible:
         word.refresh_from_db()
         StudyReview.objects.create(session=session, word=word, choice="delete", word_before=before,
             word_after=word_progress(word, include_deleted=True), session_before=snapshot)
     else:
         # Forget actions for these cards only, preserving undo for other cards.
-        StudyReview.objects.filter(word_id__in=ids).delete()
+        StudyReview.objects.filter(session__account_id=account_id, word_id__in=ids).delete()
     if session:
         clean_queue(session)
     return count
@@ -81,7 +83,9 @@ def delete_words(word_ids, from_study=False):
 
 def clean_queue(session):
     """Discard words deleted outside studying, without losing other progress."""
-    valid_ids = set(Word.objects.filter(pk__in=session.queue, archived_at__isnull=True).values_list("pk", flat=True))
+    valid_ids = set(Word.objects.filter(
+        account_id=session.account_id, pk__in=session.queue, archived_at__isnull=True,
+    ).values_list("pk", flat=True))
     cleaned = [pk for pk in session.queue if pk in valid_ids]
     changed = False
     if cleaned != session.queue:
@@ -98,7 +102,9 @@ def clean_queue(session):
 def append_due_words(session):
     """Append eligible cards without disturbing the current card or pending retries."""
     clean_queue(session)
-    due = Word.objects.filter(archived_at__isnull=True, due_at__lte=timezone.now()).exclude(pk__in=session.queue)
+    due = Word.objects.filter(
+        account_id=session.account_id, archived_at__isnull=True, due_at__lte=timezone.now(),
+    ).exclude(pk__in=session.queue)
     incoming = list(due.order_by("due_at", "pk").values_list("pk", "stage"))
     if not incoming:
         return session
@@ -117,30 +123,30 @@ def append_due_words(session):
     return session
 
 
-def ongoing_session():
+def ongoing_session(account_id):
     """Call under the preferences lock; resume legacy completed sessions too."""
-    session = active_session()
+    session = active_session(account_id)
     if not session:
-        session = StudySession.objects.order_by("-pk").first()
+        session = StudySession.objects.filter(account_id=account_id).order_by("-pk").first()
         if session:
             session.completed_at = None
             session.save(update_fields=["completed_at"])
         else:
-            session = StudySession.objects.create()
+            session = StudySession.objects.create(account_id=account_id)
     return append_due_words(session)
 
 
 @transaction.atomic
-def start_or_resume():
-    lock_preferences()
-    return ongoing_session()
+def start_or_resume(account_id):
+    lock_preferences(account_id)
+    return ongoing_session(account_id)
 
 
 @transaction.atomic
-def study_state():
-    lock_preferences()
-    session = ongoing_session()
-    word = Word.objects.get(pk=session.queue[0]) if session.queue else None
+def study_state(account_id):
+    lock_preferences(account_id)
+    session = ongoing_session(account_id)
+    word = Word.objects.get(account_id=account_id, pk=session.queue[0]) if session.queue else None
     if word and word.show_reverse_immediately and not session.revealed:
         session.revealed = True
         session.save(update_fields=["revealed"])
@@ -148,9 +154,9 @@ def study_state():
 
 
 @transaction.atomic
-def reveal(response_token):
-    lock_preferences()
-    session = active_session()
+def reveal(account_id, response_token):
+    lock_preferences(account_id)
+    session = active_session(account_id)
     if not session:
         return
     append_due_words(session)
@@ -160,18 +166,18 @@ def reveal(response_token):
 
 
 @transaction.atomic
-def answer(response_token, choice):
+def answer(account_id, response_token, choice):
     if choice not in {"know", "dont_know", "repeat"}:
         raise ValueError("Unknown study answer")
-    preferences = lock_preferences()
-    session = active_session()
+    preferences = lock_preferences(account_id)
+    session = active_session(account_id)
     if not session:
         return
     append_due_words(session)
     if not session.queue or session.response_token != response_token or not session.revealed:
         return
 
-    word = Word.objects.get(pk=session.queue[0])
+    word = Word.objects.get(account_id=account_id, pk=session.queue[0])
     before = word_progress(word)
     session_before = {
         "queue": list(session.queue),
@@ -206,10 +212,10 @@ def answer(response_token, choice):
 
 
 @transaction.atomic
-def undo(response_token):
-    lock_preferences()
+def undo(account_id, response_token):
+    lock_preferences(account_id)
     # Only the newest session can be reopened; older browser tabs cannot undo it.
-    session = StudySession.objects.order_by("-pk").first()
+    session = StudySession.objects.filter(account_id=account_id).order_by("-pk").first()
     if not session or session.response_token != response_token:
         return
     skipped = False
@@ -222,7 +228,9 @@ def undo(response_token):
                 session.save(update_fields=["response_token"])
             return
         is_deletion = review.choice == "delete"
-        word = (Word.all_objects if is_deletion else Word.objects).filter(pk=review.word_id).first()
+        word = (Word.all_objects if is_deletion else Word.objects).filter(
+            account_id=account_id, pk=review.word_id,
+        ).first()
         if word is not None and (not is_deletion or (
                 word.deleted_at and word_progress(word, include_deleted=True) == review.word_after)):
             break
@@ -232,7 +240,7 @@ def undo(response_token):
         skipped = True
     if word_progress(word, include_deleted=is_deletion) != review.word_after:
         # Do not overwrite a word that has since been changed outside studying.
-        clear_undo_history()
+        clear_undo_history(account_id)
         session.response_token = uuid.uuid4()
         session.save(update_fields=["response_token"])
         return
@@ -247,7 +255,9 @@ def undo(response_token):
     # Keep cards that arrived after this answer at the end of the restored queue.
     extras = [pk for pk in session.queue if pk not in snapshot["queue"]]
     candidates = snapshot["queue"] + extras
-    valid_ids = set(Word.objects.filter(pk__in=candidates, archived_at__isnull=True).values_list("pk", flat=True))
+    valid_ids = set(Word.objects.filter(
+        account_id=account_id, pk__in=candidates, archived_at__isnull=True,
+    ).values_list("pk", flat=True))
     baselines = dict(snapshot["initial_stages"])
     setbacks = dict(snapshot["setbacks"])
     for pk in extras:
@@ -268,18 +278,20 @@ def undo(response_token):
     review.delete()
 
 
-def reset_word(word_id):
-    reset_words([word_id])
+def reset_word(account_id, word_id):
+    reset_words(account_id, [word_id])
 
 
 @transaction.atomic
-def reset_words(word_ids):
+def reset_words(account_id, word_ids):
     """Restart the selected words and invalidate study forms with old stages."""
-    lock_preferences()
-    clear_undo_history()
+    lock_preferences(account_id)
+    clear_undo_history(account_id)
     now = timezone.now()
-    Word.objects.filter(pk__in=word_ids).update(stage=0, archived_at=None, due_at=now, updated_at=now)
-    session = active_session()
+    Word.objects.filter(account_id=account_id, pk__in=word_ids).update(
+        stage=0, archived_at=None, due_at=now, updated_at=now,
+    )
+    session = active_session(account_id)
     affected = set(word_ids).intersection(session.queue) if session else set()
     if affected:
         for word_id in affected:
@@ -292,8 +304,8 @@ def reset_words(word_ids):
 
 
 @transaction.atomic
-def change_target(target):
-    preferences = lock_preferences()
+def change_target(account_id, target):
+    preferences = lock_preferences(account_id)
     preferences.review_target = target
     preferences.full_clean()
     preferences.save(update_fields=["review_target"])

@@ -9,7 +9,7 @@ from django.test import Client, TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 
-from .models import McpCardBatch, Word
+from .models import OWNER_ACCOUNT_ID, McpCardBatch, Word
 from .test_mcp import TEST_TOKEN, TOKEN_HASH
 
 WRITE_TOKEN = "disposable-add-cards-test-token-not-a-real-secret"
@@ -50,7 +50,7 @@ class McpWriteTests(TestCase):
             self.assertEqual(self.rpc().status_code, 401)
 
     def test_add_preserves_existing_progress_and_skips_duplicates(self):
-        existing = Word.objects.create(chunk="TAKE  YOUR TIME", stage=5, archived_at=timezone.now(), meaning="keep")
+        existing = Word.objects.create(account_id=OWNER_ACCOUNT_ID, chunk="TAKE  YOUR TIME", stage=5, archived_at=timezone.now(), meaning="keep")
         self.arguments["cards"] += [
             {"obverse": "new phrase", "reverse": "first", "extra": ""},
             {"obverse": "NEW PHRASE", "reverse": "second", "extra": ""},
@@ -84,7 +84,7 @@ class McpWriteTests(TestCase):
         self.assertFalse(McpCardBatch.objects.exists())
 
     def test_more_than_ten_cards_are_added_with_duplicate_checks_and_safe_retries(self):
-        Word.objects.create(chunk="existing phrase", meaning="preserve")
+        Word.objects.create(account_id=OWNER_ACCOUNT_ID, chunk="existing phrase", meaning="preserve")
         self.arguments["cards"] = [
             {"obverse": f"approved phrase {index}", "reverse": "Example", "extra": ""}
             for index in range(25)

@@ -23,12 +23,12 @@ def credential_hashes():
 
 
 @sensitive_variables()
-def rotate_token(role):
+def rotate_token(account_id, role):
     if role not in ("read", "write"):
         raise ValueError("Unknown credential role.")
     token = secrets.token_urlsafe(48)
     with transaction.atomic():
-        learning.lock_preferences()
+        learning.lock_preferences(account_id)
         McpBearerCredential.objects.update_or_create(role=role, defaults={
             "token_hash": hashlib.sha256(token.encode()).hexdigest(), "owner_version": auth_version(),
         })

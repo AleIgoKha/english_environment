@@ -9,10 +9,10 @@ from django.test import Client, TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 
-from .models import McpOAuthClient, McpOAuthCode, McpOAuthToken, Word
+from .models import OWNER_ACCOUNT_ID, McpOAuthClient, McpOAuthCode, McpOAuthToken, Word
 from .oauth_server import digest
 from .security import auth_version
-from .tests import GOOGLE_SETTINGS
+from .tests import GOOGLE_SETTINGS, login_owner
 
 REDIRECT = "https://chatgpt.com/connector_platform_oauth_redirect"
 RESOURCE = "https://testserver/mcp/"
@@ -32,10 +32,7 @@ class OAuthTests(TestCase):
 
     def login_owner(self, client=None):
         client = client or self.client
-        session = client.session
-        session.update({"auth_kind": "google", "google_email": "owner@example.test", "google_subject": "owner",
-                        "auth_version": auth_version()})
-        session.save()
+        login_owner(client, "owner")
 
     def authorize(self, params=None, decision="allow"):
         self.login_owner()
@@ -61,7 +58,7 @@ class OAuthTests(TestCase):
                                 content_type="application/json", secure=True, **headers)
 
     def test_discovery_and_public_tool_metadata_do_not_disclose_cards(self):
-        Word.objects.create(chunk="private phrase")
+        Word.objects.create(account_id=OWNER_ACCOUNT_ID, chunk="private phrase")
         metadata = self.client.get("/.well-known/oauth-authorization-server", secure=True).json()
         self.assertEqual(metadata["issuer"], "https://testserver")
         self.assertEqual(metadata["code_challenge_methods_supported"], ["S256"])
@@ -141,7 +138,7 @@ class OAuthTests(TestCase):
     def test_scopes_expiry_owner_change_and_no_browser_session_api_access(self):
         code = self.authorize(self.params | {"scope": "cards:read"})["code"][0]
         access_token = self.exchange(code=code).json()["access_token"]
-        Word.objects.create(chunk="hello")
+        Word.objects.create(account_id=OWNER_ACCOUNT_ID, chunk="hello")
         params = {"name": "check_existing_cards", "arguments": {"phrases": ["hello", "new"]}}
         result = self.rpc("tools/call", params, access_token).json()["result"]
         self.assertEqual([match["exists"] for match in result["structuredContent"]["matches"]], [True, False])
@@ -194,7 +191,7 @@ class OAuthTests(TestCase):
         import uuid
         code = self.authorize()["code"][0]
         access_token = self.exchange(code=code).json()["access_token"]
-        Word.objects.create(chunk="existing")
+        Word.objects.create(account_id=OWNER_ACCOUNT_ID, chunk="existing")
         batch = {"batch_id": str(uuid.uuid4()), "approved": False, "cards": [
             {"obverse": "existing", "reverse": "Already here", "extra": ""},
             {"obverse": "new phrase", "reverse": "Previously: original\nBetter: corrected", "extra": ""}]}

@@ -5,18 +5,15 @@ from django.test import Client, TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 
-from .models import Word
+from .models import OWNER_ACCOUNT_ID, Word
 from . import learning
-from .security import auth_version
-from .tests import GOOGLE_SETTINGS
+from .tests import GOOGLE_SETTINGS, login_owner
 
 
 @override_settings(**GOOGLE_SETTINGS)
 class WordManagementTests(TestCase):
     def setUp(self):
-        session = self.client.session
-        session.update({"auth_kind": "google", "google_email": "owner@example.test", "google_subject": "test-owner", "auth_version": auth_version()})
-        session.save()
+        login_owner(self.client, "test-owner")
 
     def test_add_chunk_only_creates_new_word_due_immediately(self):
         before = timezone.now()
@@ -31,8 +28,8 @@ class WordManagementTests(TestCase):
         self.assertContains(self.client.get(reverse("home")), "take your time")
 
     def test_add_and_edit_reject_duplicate_fronts_including_learned_cards(self):
-        learned = Word.objects.create(chunk="Take your time", stage=5, archived_at=timezone.now())
-        other = Word.objects.create(chunk="other card", meaning="keep")
+        learned = Word.objects.create(account_id=OWNER_ACCOUNT_ID, chunk="Take your time", stage=5, archived_at=timezone.now())
+        other = Word.objects.create(account_id=OWNER_ACCOUNT_ID, chunk="other card", meaning="keep")
         for url in (reverse("word-add"), reverse("word-edit", args=[other.pk])):
             response = self.client.post(url, {"chunk": " TAKE  YOUR\u00a0TIME ", "meaning": "replacement"})
             self.assertContains(response, "A card with this Obverse already exists")
@@ -48,13 +45,13 @@ class WordManagementTests(TestCase):
         self.assertEqual(learned.meaning, "updated")
 
     def test_practice_edit_returns_to_same_card_and_preserves_session(self):
-        word = Word.objects.create(chunk="before", stage=2)
-        Word.objects.create(chunk="next")
-        session = learning.start_or_resume()
+        word = Word.objects.create(account_id=OWNER_ACCOUNT_ID, chunk="before", stage=2)
+        Word.objects.create(account_id=OWNER_ACCOUNT_ID, chunk="next")
+        session = learning.start_or_resume(OWNER_ACCOUNT_ID)
         edit_url = reverse("word-edit", args=[word.pk]) + "?return_to=study"
         for revealed in (False, True):
             if revealed:
-                learning.reveal(session.response_token)
+                learning.reveal(OWNER_ACCOUNT_ID, session.response_token)
                 session.refresh_from_db()
             before = (session.queue, session.initial_stages, session.setbacks,
                       session.response_token, session.revealed)
@@ -101,8 +98,8 @@ class WordManagementTests(TestCase):
         self.assertTrue(edit.context["form"]["show_reverse_immediately"].value())
 
     def test_toggling_reverse_during_practice_applies_immediately(self):
-        word = Word.objects.create(chunk="test phrase", meaning="answer", stage=2)
-        session = learning.start_or_resume()
+        word = Word.objects.create(account_id=OWNER_ACCOUNT_ID, chunk="test phrase", meaning="answer", stage=2)
+        session = learning.start_or_resume(OWNER_ACCOUNT_ID)
         original_queue = list(session.queue)
         original_due = word.due_at
         edit_url = reverse("word-edit", args=[word.pk])
@@ -151,9 +148,9 @@ class WordManagementTests(TestCase):
         self.assertLessEqual(word.due_at, timezone.now())
 
     def test_home_includes_all_statuses_and_correct_due_count(self):
-        Word.objects.create(chunk="due chunk")
-        Word.objects.create(chunk="future chunk", due_at=timezone.now() + timedelta(days=1))
-        Word.objects.create(chunk="archived chunk", archived_at=timezone.now())
+        Word.objects.create(account_id=OWNER_ACCOUNT_ID, chunk="due chunk")
+        Word.objects.create(account_id=OWNER_ACCOUNT_ID, chunk="future chunk", due_at=timezone.now() + timedelta(days=1))
+        Word.objects.create(account_id=OWNER_ACCOUNT_ID, chunk="archived chunk", archived_at=timezone.now())
         response = self.client.get(reverse("home"))
         self.assertContains(response, "due chunk")
         self.assertContains(response, "future chunk")
@@ -164,7 +161,7 @@ class WordManagementTests(TestCase):
 
     def test_user_content_is_escaped_in_lists_forms_and_confirmation(self):
         unsafe = '<script>alert("private")</script>'
-        word = Word.objects.create(chunk=unsafe, meaning=unsafe, example=unsafe)
+        word = Word.objects.create(account_id=OWNER_ACCOUNT_ID, chunk=unsafe, meaning=unsafe, example=unsafe)
         for url in [reverse("home"), reverse("word-edit", args=[word.pk]), reverse("word-delete", args=[word.pk])]:
             with self.subTest(url=url):
                 response = self.client.get(url, follow=True)
@@ -174,7 +171,7 @@ class WordManagementTests(TestCase):
 
     def test_edit_preserves_learning_state_and_can_clear_optional_fields(self):
         due_at = timezone.now() + timedelta(days=7)
-        word = Word.objects.create(chunk="before", meaning="old meaning", example="old example", stage=3, due_at=due_at)
+        word = Word.objects.create(account_id=OWNER_ACCOUNT_ID, chunk="before", meaning="old meaning", example="old example", stage=3, due_at=due_at)
         response = self.client.post(reverse("word-edit", args=[word.pk]), {
             "chunk": "after", "meaning": "", "example": "", "stage": "0", "due_at": "2030-01-01",
         })
@@ -185,15 +182,15 @@ class WordManagementTests(TestCase):
         self.assertEqual(word.due_at, due_at)
 
     def test_invalid_edit_leaves_stored_content_unchanged(self):
-        word = Word.objects.create(chunk="original", meaning="original meaning")
+        word = Word.objects.create(account_id=OWNER_ACCOUNT_ID, chunk="original", meaning="original meaning")
         response = self.client.post(reverse("word-edit", args=[word.pk]), {"chunk": "", "meaning": "changed"})
         self.assertEqual(response.status_code, 200)
         word.refresh_from_db()
         self.assertEqual((word.chunk, word.meaning), ("original", "original meaning"))
 
     def test_delete_get_does_not_mutate_and_post_deletes_only_chosen_word(self):
-        chosen = Word.objects.create(chunk="chosen")
-        other = Word.objects.create(chunk="keep me")
+        chosen = Word.objects.create(account_id=OWNER_ACCOUNT_ID, chunk="chosen")
+        other = Word.objects.create(account_id=OWNER_ACCOUNT_ID, chunk="keep me")
         url = reverse("word-delete", args=[chosen.pk])
         self.assertRedirects(self.client.get(url), reverse("word-edit", args=[chosen.pk]))
         self.assertTrue(Word.objects.filter(pk=chosen.pk).exists())
@@ -202,9 +199,9 @@ class WordManagementTests(TestCase):
         self.assertTrue(Word.objects.filter(pk=other.pk).exists())
 
     def test_delete_from_practice_is_immediate_and_returns_to_next_card(self):
-        chosen = Word.objects.create(chunk="delete while learning")
-        other = Word.objects.create(chunk="next card")
-        session = learning.start_or_resume()
+        chosen = Word.objects.create(account_id=OWNER_ACCOUNT_ID, chunk="delete while learning")
+        other = Word.objects.create(account_id=OWNER_ACCOUNT_ID, chunk="next card")
+        session = learning.start_or_resume(OWNER_ACCOUNT_ID)
         url = reverse("word-delete", args=[chosen.pk]) + "?return_to=study"
         self.assertRedirects(self.client.get(url), reverse("word-edit", args=[chosen.pk]) + "?return_to=study")
         self.assertTrue(Word.objects.filter(pk=chosen.pk).exists())
@@ -224,8 +221,8 @@ class WordManagementTests(TestCase):
         self.assertEqual(waiting.context["remaining"], 0)
 
     def test_learned_filter_shows_only_learned_words_with_reset_action(self):
-        Word.objects.create(chunk="still learning")
-        word = Word.objects.create(chunk="learned chunk", stage=5, archived_at=timezone.now())
+        Word.objects.create(account_id=OWNER_ACCOUNT_ID, chunk="still learning")
+        word = Word.objects.create(account_id=OWNER_ACCOUNT_ID, chunk="learned chunk", stage=5, archived_at=timezone.now())
         response = self.client.get(reverse("home"), {"progress": "learned"})
         self.assertContains(response, "learned chunk")
         self.assertNotContains(response, "still learning")
@@ -234,7 +231,7 @@ class WordManagementTests(TestCase):
         self.assertIn("no-store", response["Cache-Control"])
 
     def test_restore_requires_post_and_resets_to_first_stage_due_now(self):
-        word = Word.objects.create(chunk="remember", stage=5, archived_at=timezone.now(), due_at=timezone.now() + timedelta(days=14))
+        word = Word.objects.create(account_id=OWNER_ACCOUNT_ID, chunk="remember", stage=5, archived_at=timezone.now(), due_at=timezone.now() + timedelta(days=14))
         url = reverse("word-restore", args=[word.pk])
         self.assertEqual(self.client.get(url).status_code, 405)
         word.refresh_from_db()
@@ -249,7 +246,7 @@ class WordManagementTests(TestCase):
 
     def test_stale_restore_does_not_reset_an_active_words_progress(self):
         due_at = timezone.now() + timedelta(days=3)
-        word = Word.objects.create(chunk="active word", stage=2, due_at=due_at)
+        word = Word.objects.create(account_id=OWNER_ACCOUNT_ID, chunk="active word", stage=2, due_at=due_at)
         self.assertRedirects(self.client.post(reverse("word-restore", args=[word.pk])), reverse("home"))
         word.refresh_from_db()
         self.assertEqual(word.stage, 2)
@@ -257,7 +254,7 @@ class WordManagementTests(TestCase):
 
     def test_archived_words_can_be_edited_or_deleted_without_restoring(self):
         archived_at = timezone.now()
-        word = Word.objects.create(chunk="learned", stage=5, archived_at=archived_at)
+        word = Word.objects.create(account_id=OWNER_ACCOUNT_ID, chunk="learned", stage=5, archived_at=archived_at)
         self.assertRedirects(self.client.post(reverse("word-edit", args=[word.pk]), {"chunk": "learned phrase"}), reverse("home") + "?progress=learned")
         word.refresh_from_db()
         self.assertEqual(word.archived_at, archived_at)
@@ -265,7 +262,7 @@ class WordManagementTests(TestCase):
         self.assertRedirects(self.client.post(reverse("word-delete", args=[word.pk])), reverse("home") + "?progress=learned")
 
     def test_every_word_route_requires_authentication_and_cannot_mutate_anonymously(self):
-        word = Word.objects.create(chunk="private word", stage=5, archived_at=timezone.now())
+        word = Word.objects.create(account_id=OWNER_ACCOUNT_ID, chunk="private word", stage=5, archived_at=timezone.now())
         browser = Client()
         urls = [reverse("home"), reverse("archive"), reverse("word-add")]
         urls += [reverse(name, args=[word.pk]) for name in ["word-edit", "word-delete", "word-restore"]]
@@ -283,7 +280,7 @@ class WordManagementTests(TestCase):
     def test_mutating_routes_enforce_csrf(self):
         browser = Client(enforce_csrf_checks=True)
         browser.cookies = self.client.cookies.copy()
-        word = Word.objects.create(chunk="private word", archived_at=timezone.now())
+        word = Word.objects.create(account_id=OWNER_ACCOUNT_ID, chunk="private word", archived_at=timezone.now())
         urls = [reverse("word-add")]
         urls += [reverse(name, args=[word.pk]) for name in ["word-edit", "word-delete", "word-restore"]]
         for url in urls:
@@ -311,9 +308,9 @@ class WordManagementTests(TestCase):
 
 
     def test_status_counts_filters_and_search(self):
-        new = Word.objects.create(chunk="alpha", meaning="first meaning")
-        practiced = Word.objects.create(chunk="beta", stage=2, example="A hidden phrase", due_at=timezone.now() + timedelta(days=1))
-        learned = Word.objects.create(chunk="gamma", stage=5, archived_at=timezone.now())
+        new = Word.objects.create(account_id=OWNER_ACCOUNT_ID, chunk="alpha", meaning="first meaning")
+        practiced = Word.objects.create(account_id=OWNER_ACCOUNT_ID, chunk="beta", stage=2, example="A hidden phrase", due_at=timezone.now() + timedelta(days=1))
+        learned = Word.objects.create(account_id=OWNER_ACCOUNT_ID, chunk="gamma", stage=5, archived_at=timezone.now())
         response = self.client.get(reverse("home"))
         for name in ("to_learn_count", "practiced_count", "learned_count"):
             self.assertEqual(response.context[name], 1)
@@ -331,7 +328,7 @@ class WordManagementTests(TestCase):
         self.assertEqual(self.client.get(reverse("home"), {"progress": "invalid"}).context["word_count"], 3)
 
     def test_home_structure_and_no_archive_button(self):
-        Word.objects.create(chunk="test card")
+        Word.objects.create(account_id=OWNER_ACCOUNT_ID, chunk="test card")
         response = self.client.get(reverse("home"))
         for text in ("To learn", "Practiced", "Learned", "Start learning", "My cards", "Reset", "Edit", "Select", "Delete"):
             self.assertContains(response, text)
@@ -341,7 +338,7 @@ class WordManagementTests(TestCase):
         self.assertNotContains(self.client.get(reverse("learning-settings")), "Archive")
 
     def test_reset_confirms_then_resets_text_and_progress(self):
-        word = Word.objects.create(chunk="keep text", meaning="keep meaning", stage=5,
+        word = Word.objects.create(account_id=OWNER_ACCOUNT_ID, chunk="keep text", meaning="keep meaning", stage=5,
                                    archived_at=timezone.now(), due_at=timezone.now()+timedelta(days=14))
         url = reverse("word-reset", args=[word.pk])
         self.assertContains(self.client.get(url), "Reset this word?")
@@ -356,9 +353,9 @@ class WordManagementTests(TestCase):
         self.assertLessEqual(word.due_at, timezone.now())
 
     def test_bulk_preview_does_not_mutate_and_confirm_changes_only_selected(self):
-        one = Word.objects.create(chunk="one", stage=2)
-        two = Word.objects.create(chunk="two", stage=5, archived_at=timezone.now())
-        keep = Word.objects.create(chunk="keep", stage=3)
+        one = Word.objects.create(account_id=OWNER_ACCOUNT_ID, chunk="one", stage=2)
+        two = Word.objects.create(account_id=OWNER_ACCOUNT_ID, chunk="two", stage=5, archived_at=timezone.now())
+        keep = Word.objects.create(account_id=OWNER_ACCOUNT_ID, chunk="keep", stage=3)
         url = reverse("word-bulk")
         data = {"word_ids": [one.pk, two.pk], "action": "reset"}
         self.assertContains(self.client.post(url, data), "Reset 2 cards?")
@@ -378,7 +375,7 @@ class WordManagementTests(TestCase):
         self.assertEqual(list(Word.objects.values_list("pk", flat=True)), [keep.pk])
 
     def test_invalid_bulk_requests_do_not_change_words(self):
-        word = Word.objects.create(chunk="safe", stage=3)
+        word = Word.objects.create(account_id=OWNER_ACCOUNT_ID, chunk="safe", stage=3)
         url = reverse("word-bulk")
         for data in ({}, {"action": "delete", "word_ids": []},
                      {"action": "invalid", "word_ids": [word.pk]},
@@ -390,7 +387,7 @@ class WordManagementTests(TestCase):
         self.assertEqual(self.client.get(url).status_code, 405)
 
     def test_reset_and_bulk_require_authentication_and_csrf(self):
-        word = Word.objects.create(chunk="private")
+        word = Word.objects.create(account_id=OWNER_ACCOUNT_ID, chunk="private")
         for url in (reverse("word-reset", args=[word.pk]), reverse("word-bulk")):
             self.assertRedirects(Client().post(url), reverse("login"))
             self.assertEqual(Client(enforce_csrf_checks=True).post(url).status_code, 403)
@@ -399,12 +396,12 @@ class WordManagementTests(TestCase):
     def test_readiness_drives_counts_filters_and_each_card_status(self):
         from .models import StudySession
         now = timezone.now()
-        due = Word.objects.create(chunk="due again", stage=3, due_at=now-timedelta(days=1))
-        future_zero = Word.objects.create(chunk="reviewed at stage zero", stage=0, due_at=now+timedelta(days=1))
-        future = Word.objects.create(chunk="waiting", stage=2, due_at=now+timedelta(days=3))
-        retry = Word.objects.create(chunk="pending retry", stage=1, due_at=now+timedelta(days=1))
-        learned = Word.objects.create(chunk="learned", stage=5, archived_at=now)
-        StudySession.objects.create(queue=[retry.pk])
+        due = Word.objects.create(account_id=OWNER_ACCOUNT_ID, chunk="due again", stage=3, due_at=now-timedelta(days=1))
+        future_zero = Word.objects.create(account_id=OWNER_ACCOUNT_ID, chunk="reviewed at stage zero", stage=0, due_at=now+timedelta(days=1))
+        future = Word.objects.create(account_id=OWNER_ACCOUNT_ID, chunk="waiting", stage=2, due_at=now+timedelta(days=3))
+        retry = Word.objects.create(account_id=OWNER_ACCOUNT_ID, chunk="pending retry", stage=1, due_at=now+timedelta(days=1))
+        learned = Word.objects.create(account_id=OWNER_ACCOUNT_ID, chunk="learned", stage=5, archived_at=now)
+        StudySession.objects.create(account_id=OWNER_ACCOUNT_ID, queue=[retry.pk])
         response = self.client.get(reverse("home"))
         self.assertEqual(response.context["to_learn_count"], 2)
         self.assertEqual(response.context["practiced_count"], 2)
@@ -425,7 +422,7 @@ class WordManagementTests(TestCase):
     def test_status_becomes_to_learn_when_review_time_arrives(self):
         from unittest.mock import patch
         due = timezone.now() + timedelta(days=1)
-        word = Word.objects.create(chunk="scheduled", stage=2, due_at=due)
+        word = Word.objects.create(account_id=OWNER_ACCOUNT_ID, chunk="scheduled", stage=2, due_at=due)
         with patch("cards.views.timezone.now", return_value=due-timedelta(seconds=1)):
             response = self.client.get(reverse("home"))
             self.assertEqual(response.context["to_learn_count"], 0)

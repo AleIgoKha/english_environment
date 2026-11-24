@@ -6,6 +6,15 @@ from django.utils import timezone
 from authlib.oauth2.rfc6749 import ClientMixin, AuthorizationCodeMixin
 
 
+OWNER_ACCOUNT_ID = uuid.UUID("00000000-0000-0000-0000-000000000001")
+LOCAL_TEST_ACCOUNT_ID = uuid.UUID("00000000-0000-0000-0000-000000000002")
+
+
+class Account(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    google_subject = models.CharField(max_length=255, unique=True, null=True)
+
+
 class WordQuerySet(models.QuerySet):
     def delete(self):
         now = timezone.now()
@@ -28,8 +37,9 @@ class VisibleWordManager(models.Manager.from_queryset(WordQuerySet)):
 
 
 class Word(models.Model):
-    """A chunk and its learning state, shared by the app's single owner."""
+    """A private card and its learning state."""
 
+    account = models.ForeignKey(Account, on_delete=models.CASCADE)
     chunk = models.CharField(max_length=300)
     meaning = models.TextField(blank=True, max_length=2000)
     example = models.TextField(blank=True, max_length=4000)
@@ -60,9 +70,9 @@ class Word(models.Model):
 
 
 class LearningSettings(models.Model):
-    """One owner's preferences; also serializes study-session changes."""
+    """An account's preferences; also serializes its study changes."""
 
-    id = models.PositiveSmallIntegerField(primary_key=True, default=1, editable=False)
+    account = models.OneToOneField(Account, on_delete=models.CASCADE)
     review_target = models.PositiveSmallIntegerField(
         default=5, validators=[MinValueValidator(1), MaxValueValidator(10)],
     )
@@ -80,6 +90,7 @@ class WordImport(models.Model):
     """Temporary parsed CSV preview, stored privately in the database."""
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    account = models.ForeignKey(Account, on_delete=models.CASCADE)
     rows = models.JSONField(default=list)
     created_at = models.DateTimeField(auto_now_add=True)
     imported_at = models.DateTimeField(null=True, blank=True)
@@ -186,6 +197,7 @@ class McpOAuthToken(models.Model):
 class StudySession(models.Model):
     """The queue and per-word baselines survive browser closure and restarts."""
 
+    account = models.ForeignKey(Account, on_delete=models.CASCADE)
     queue = models.JSONField(default=list)
     initial_stages = models.JSONField(default=dict)
     setbacks = models.JSONField(default=dict)
@@ -198,8 +210,8 @@ class StudySession(models.Model):
     class Meta:
         constraints = [
             models.UniqueConstraint(
-                models.Value(1), condition=models.Q(completed_at__isnull=True),
-                name="one_open_study_session",
+                fields=["account"], condition=models.Q(completed_at__isnull=True),
+                name="one_open_study_session_per_account",
             ),
         ]
 

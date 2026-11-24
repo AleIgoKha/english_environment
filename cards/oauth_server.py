@@ -27,8 +27,8 @@ from django.views.decorators.debug import sensitive_post_parameters, sensitive_v
 from django.views.decorators.http import require_GET, require_POST, require_http_methods
 
 from . import learning
-from .models import McpOAuthClient, McpOAuthCode, McpOAuthToken
-from .security import auth_version, is_authenticated
+from .models import Account, McpOAuthClient, McpOAuthCode, McpOAuthToken, OWNER_ACCOUNT_ID
+from .security import auth_version, authenticated_account
 
 SCOPES = ["cards:read", "cards:add"]
 
@@ -59,7 +59,8 @@ def resource():
 def valid_owner(credential):
     return (credential.owner_email == settings.ALLOWED_GOOGLE_EMAIL
             and constant_time_compare(credential.owner_version, auth_version())
-            and credential.resource == resource())
+            and credential.resource == resource()
+            and Account.objects.filter(pk=OWNER_ACCOUNT_ID, google_subject=credential.owner_subject).exists())
 
 
 def owner(credential):
@@ -229,7 +230,7 @@ def register(request):
     normalized = sorted(set(uris))
     key = digest(json.dumps(normalized))
     with transaction.atomic():
-        learning.lock_preferences()
+        learning.lock_preferences(OWNER_ACCOUNT_ID)
         client = McpOAuthClient.objects.filter(registration_hash=key).first()
         if not client:
             if McpOAuthClient.objects.count() >= 256:
@@ -260,12 +261,13 @@ def authorize(request):
         grant = authorization.get_consent_grant(request)
     except OAuth2Error:
         return JsonResponse({"error": "invalid_request", "error_description": "Invalid authorization request."}, status=400)
-    if not is_authenticated(request):
+    account = authenticated_account(request)
+    if account is None:
         if request.method != "GET":
             return HttpResponse(status=403)
         request.session["oauth_authorize_query"] = request.GET.urlencode()
         return redirect("login")
-    if request.session.get("auth_kind") != "google":
+    if account.pk != OWNER_ACCOUNT_ID:
         return HttpResponse("Connect using the owner's Google sign-in.", status=403)
     query_hash = digest(request.GET.urlencode())
     if request.method == "GET":
@@ -282,10 +284,10 @@ def authorize(request):
             or not constant_time_compare(consent.get("nonce", ""), request.POST.get("consent_nonce", ""))
             or request.POST.get("decision") not in ("allow", "deny")):
         return HttpResponse("Reopen the connection request and review it again.", status=403)
-    user = SimpleNamespace(pk=request.session["google_subject"], subject=request.session["google_subject"],
+    user = SimpleNamespace(pk=account.google_subject, subject=account.google_subject,
                            email=settings.ALLOWED_GOOGLE_EMAIL, version=auth_version())
     with transaction.atomic():
-        learning.lock_preferences()
+        learning.lock_preferences(OWNER_ACCOUNT_ID)
         response = authorization.create_authorization_response(grant.request,
             grant_user=user if request.POST["decision"] == "allow" else None, grant=grant)
     if response.get("Location"):
@@ -306,7 +308,7 @@ def token(request):
     except OAuth2Error:
         return JsonResponse({"error": "invalid_target"}, status=400)
     with transaction.atomic():
-        learning.lock_preferences()
+        learning.lock_preferences(OWNER_ACCOUNT_ID)
         return server().create_token_response(request)
 
 
@@ -322,7 +324,7 @@ def revoke(request):
     client_id = request.POST.get("client_id", "")
     if value and client_id:
         with transaction.atomic():
-            learning.lock_preferences()
+            learning.lock_preferences(OWNER_ACCOUNT_ID)
             token_hash = digest(value)
             credential = (McpOAuthToken.objects.filter(client__client_id=client_id, refresh_hash=token_hash).first()
                           or McpOAuthToken.objects.filter(client__client_id=client_id, access_hash=token_hash).first())

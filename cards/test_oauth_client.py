@@ -6,10 +6,9 @@ from urllib.parse import parse_qs, urlsplit
 from django.core.asgi import get_asgi_application
 from django.test import Client, TransactionTestCase, override_settings
 
-from .models import Word
-from .security import auth_version
+from .models import OWNER_ACCOUNT_ID, Word
 from .test_mcp_client import SDK_AVAILABLE
-from .tests import GOOGLE_SETTINGS
+from .tests import GOOGLE_SETTINGS, login_owner
 
 if SDK_AVAILABLE:
     import anyio
@@ -24,14 +23,9 @@ if SDK_AVAILABLE:
 @override_settings(**GOOGLE_SETTINGS, CARDY_OAUTH_ENABLED=True, CARDY_PUBLIC_URL="https://testserver")
 class OAuthClientTests(TransactionTestCase):
     def test_official_sdk_completes_oauth_and_reads_the_owner_deck(self):
-        from .models import LearningSettings
-        LearningSettings.objects.get_or_create(pk=1)
-        Word.objects.create(chunk="hello")
         browser = Client()
-        session = browser.session
-        session.update({"auth_kind": "google", "google_email": "owner@example.test", "google_subject": "sdk-owner",
-                        "auth_version": auth_version()})
-        session.save()
+        login_owner(browser, "sdk-owner")
+        Word.objects.create(account_id=OWNER_ACCOUNT_ID, chunk="hello")
         cookies = {key: morsel.value for key, morsel in browser.cookies.items()}
         app = get_asgi_application()
 

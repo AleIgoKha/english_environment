@@ -11,12 +11,28 @@ from requests import ConnectionError
 
 from .auth_views import google_client
 from .logging import RedactOAuthQuery
+from .models import Account, LearningSettings, OWNER_ACCOUNT_ID
 from .security import auth_version
 
 GOOGLE_SETTINGS = {
     "GOOGLE_CLIENT_ID": "test-client", "GOOGLE_CLIENT_SECRET": "test-secret",
     "ALLOWED_GOOGLE_EMAIL": "owner@example.test", "LOCAL_TEST_LOGIN": False,
 }
+
+
+def seed_owner():
+    account, _ = Account.objects.get_or_create(pk=OWNER_ACCOUNT_ID)
+    LearningSettings.objects.get_or_create(account=account)
+    return account
+
+
+def login_owner(client, subject="owner"):
+    account = seed_owner()
+    Account.objects.filter(pk=account.pk).update(google_subject=subject)
+    session = client.session
+    session.update({"auth_kind": "google", "account_id": str(account.pk), "google_subject": subject,
+                    "auth_version": auth_version()})
+    session.save()
 
 
 @override_settings(**GOOGLE_SETTINGS)

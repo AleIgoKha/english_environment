@@ -1,10 +1,13 @@
-"""Owner-only Google sessions and explicitly enabled local test access."""
+"""Cardy account sessions and explicitly enabled local test access."""
 from functools import wraps
 from ipaddress import ip_address, ip_network
+from uuid import UUID
 
 from django.conf import settings
 from django.shortcuts import redirect
 from django.utils.crypto import constant_time_compare, salted_hmac
+
+from .models import Account, LOCAL_TEST_ACCOUNT_ID, OWNER_ACCOUNT_ID
 
 
 def google_configured():
@@ -41,23 +44,47 @@ def local_request(request):
         return False
 
 
+def public_sign_in_enabled():
+    return settings.CARDY_PUBLIC_SIGN_IN and Account.objects.filter(
+        pk=OWNER_ACCOUNT_ID, google_subject__isnull=False,
+    ).exists()
+
+
+def authenticated_account(request):
+    kind = request.session.get("auth_kind")
+    try:
+        account_id = UUID(request.session.get("account_id", ""))
+    except (AttributeError, TypeError, ValueError):
+        return None
+    if kind == "local-test":
+        if account_id == LOCAL_TEST_ACCOUNT_ID and local_test_login_enabled() and local_request(request):
+            return Account.objects.filter(pk=account_id).first()
+        return None
+    if (kind != "google" or account_id == LOCAL_TEST_ACCOUNT_ID or not google_configured()
+            or not constant_time_compare(request.session.get("auth_version", ""), auth_version())):
+        return None
+    subject = request.session.get("google_subject")
+    if not subject or (account_id != OWNER_ACCOUNT_ID and not public_sign_in_enabled()):
+        return None
+    return Account.objects.filter(pk=account_id, google_subject=subject).first()
+
+
 def is_authenticated(request):
-    if request.session.get("auth_kind") == "local-test":
-        return local_test_login_enabled() and local_request(request)
-    return (
-        google_configured() and request.session.get("auth_kind") == "google"
-        and bool(request.session.get("google_subject"))
-        and request.session.get("google_email") == settings.ALLOWED_GOOGLE_EMAIL
-        and constant_time_compare(request.session.get("auth_version", ""), auth_version())
-    )
+    return authenticated_account(request) is not None
 
 
-def owner_required(view):
+def mcp_account_id():
+    return LOCAL_TEST_ACCOUNT_ID if local_test_login_enabled() else OWNER_ACCOUNT_ID
+
+
+def account_required(view):
     @wraps(view)
     def wrapped(request, *args, **kwargs):
-        if not is_authenticated(request):
+        account = authenticated_account(request)
+        if account is None:
             request.session.flush()
             return redirect("login")
+        request.account = account
         response = view(request, *args, **kwargs)
         response["Cache-Control"] = "no-store"
         return response

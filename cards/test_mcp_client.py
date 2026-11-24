@@ -5,7 +5,8 @@ from django.test import LiveServerTestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 
-from .models import Word
+from .models import OWNER_ACCOUNT_ID, Word
+from .tests import seed_owner
 from .test_mcp import TEST_TOKEN, TOKEN_HASH
 from .test_mcp_write import WRITE_TOKEN, WRITE_HASH
 import uuid
@@ -23,8 +24,11 @@ except ImportError:
 @skipUnless(SDK_AVAILABLE, "Optional official MCP client is not installed; see MCP.md")
 @override_settings(CARDY_MCP_TOKEN_SHA256=TOKEN_HASH)
 class McpClientTests(LiveServerTestCase):
+    def setUp(self):
+        seed_owner()
+
     def test_official_client_initializes_discovers_and_checks_phrases(self):
-        Word.objects.create(chunk="Take your time", stage=5, archived_at=timezone.now())
+        Word.objects.create(account_id=OWNER_ACCOUNT_ID, chunk="Take your time", stage=5, archived_at=timezone.now())
 
         async def exercise():
             with anyio.fail_after(20):

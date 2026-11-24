@@ -18,8 +18,8 @@ from . import importing, learning
 from .mcp_cards import add_cards
 from .mcp_credentials import credential_hashes, rotate_token
 import uuid
-from .models import LearningSettings, McpBearerCredential, StudyReview, StudySession, Word, WordImport
-from .tests import GOOGLE_SETTINGS
+from .models import OWNER_ACCOUNT_ID, LearningSettings, McpBearerCredential, StudyReview, StudySession, Word, WordImport
+from .tests import GOOGLE_SETTINGS, seed_owner
 from scripts import apply_railway_config
 
 
@@ -38,7 +38,7 @@ class HealthTests(TestCase):
         self.assertEqual(response.json(), {"status": "unavailable"})
 
     def test_missing_seed_data_fails_readiness(self):
-        LearningSettings.objects.filter(pk=1).delete()
+        LearningSettings.objects.filter(account_id=OWNER_ACCOUNT_ID).delete()
         self.assertEqual(self.client.get(reverse("health")).status_code, 503)
 
     def test_database_error_is_not_exposed(self):
@@ -117,8 +117,8 @@ class RailwayConfigurationTests(SimpleTestCase):
 @skipUnless(connection.vendor == "postgresql", "Real concurrent request checks require PostgreSQL")
 class PostgresConcurrencyTests(TransactionTestCase):
     def setUp(self):
-        LearningSettings.objects.get_or_create(pk=1)
-        self.word = Word.objects.create(chunk="concurrent test")
+        seed_owner()
+        self.word = Word.objects.create(account_id=OWNER_ACCOUNT_ID, chunk="concurrent test")
 
     def run_together(self, operation):
         barrier = Barrier(2)
@@ -135,7 +135,7 @@ class PostgresConcurrencyTests(TransactionTestCase):
             return [request.result(timeout=20) for request in requests]
 
     def test_concurrent_start_creates_only_one_session(self):
-        sessions = self.run_together(lambda: learning.start_or_resume().pk)
+        sessions = self.run_together(lambda: learning.start_or_resume(OWNER_ACCOUNT_ID).pk)
         self.assertEqual(sessions[0], sessions[1])
         self.assertEqual(StudySession.objects.count(), 1)
 
@@ -143,15 +143,15 @@ class PostgresConcurrencyTests(TransactionTestCase):
         arguments = {"batch_id": str(uuid.uuid4()), "approved": True, "cards": [
             {"obverse": "concurrent MCP phrase", "reverse": "example", "extra": ""},
         ]}
-        results = self.run_together(lambda: add_cards(arguments))
+        results = self.run_together(lambda: add_cards(OWNER_ACCOUNT_ID, arguments))
         self.assertEqual(Word.objects.filter(chunk="concurrent MCP phrase").count(), 1)
         self.assertEqual(sorted(result["replayed"] for result in results), [False, True])
 
     def test_concurrent_undo_of_learning_deletion_restores_card_once(self):
-        session = learning.start_or_resume()
-        learning.delete_words([self.word.pk], from_study=True)
+        session = learning.start_or_resume(OWNER_ACCOUNT_ID)
+        learning.delete_words(OWNER_ACCOUNT_ID, [self.word.pk], from_study=True)
         session.refresh_from_db()
-        self.run_together(lambda: learning.undo(session.response_token))
+        self.run_together(lambda: learning.undo(OWNER_ACCOUNT_ID, session.response_token))
         session.refresh_from_db()
         self.assertTrue(Word.objects.filter(pk=self.word.pk).exists())
         self.assertEqual(session.queue, [self.word.pk])
@@ -159,28 +159,28 @@ class PostgresConcurrencyTests(TransactionTestCase):
 
     def test_concurrent_token_generation_leaves_one_valid_role_token(self):
         import hashlib
-        tokens = self.run_together(lambda: rotate_token("read"))
+        tokens = self.run_together(lambda: rotate_token(OWNER_ACCOUNT_ID, "read"))
         self.assertEqual(McpBearerCredential.objects.count(), 1)
         hashes = [hashlib.sha256(value.removeprefix("Bearer ").encode()).hexdigest() for value in tokens]
         self.assertEqual(sum(value == credential_hashes()["read"] for value in hashes), 1)
 
     def test_concurrent_imports_with_matching_fronts_add_one_card(self):
         rows = [{"chunk": "same phrase", "meaning": "first", "example": ""}]
-        batches = [WordImport.objects.create(rows=rows) for _ in range(2)]
+        batches = [WordImport.objects.create(account_id=OWNER_ACCOUNT_ID, rows=rows) for _ in range(2)]
         # Claim different batches in each worker, then confirm simultaneously.
         from queue import Queue
         pending = Queue()
         for batch in batches:
             pending.put(batch.pk)
-        self.run_together(lambda: importing.confirm_import(pending.get()).pk)
+        self.run_together(lambda: importing.confirm_import(OWNER_ACCOUNT_ID, pending.get()).pk)
         self.assertEqual(Word.objects.filter(chunk="same phrase").count(), 1)
         counts = sorted(WordImport.objects.values_list("added_count", "skipped_count"))
         self.assertEqual(counts, [(0, 1), (1, 0)])
 
     def test_concurrent_duplicate_answer_advances_only_once(self):
-        session = learning.start_or_resume()
-        learning.reveal(session.response_token)
-        self.run_together(lambda: learning.answer(session.response_token, "know"))
+        session = learning.start_or_resume(OWNER_ACCOUNT_ID)
+        learning.reveal(OWNER_ACCOUNT_ID, session.response_token)
+        self.run_together(lambda: learning.answer(OWNER_ACCOUNT_ID, session.response_token, "know"))
         self.word.refresh_from_db()
         session.refresh_from_db()
         self.assertEqual(self.word.stage, 1)
@@ -189,13 +189,13 @@ class PostgresConcurrencyTests(TransactionTestCase):
 
 
     def test_concurrent_duplicate_undo_reverts_only_one_answer(self):
-        second = Word.objects.create(chunk="second undo test")
-        session = learning.start_or_resume()
+        second = Word.objects.create(account_id=OWNER_ACCOUNT_ID, chunk="second undo test")
+        session = learning.start_or_resume(OWNER_ACCOUNT_ID)
         for _ in range(2):
-            learning.reveal(session.response_token)
-            learning.answer(session.response_token, "know")
+            learning.reveal(OWNER_ACCOUNT_ID, session.response_token)
+            learning.answer(OWNER_ACCOUNT_ID, session.response_token, "know")
             session.refresh_from_db()
-        self.run_together(lambda: learning.undo(session.response_token))
+        self.run_together(lambda: learning.undo(OWNER_ACCOUNT_ID, session.response_token))
         session.refresh_from_db()
         self.word.refresh_from_db()
         second.refresh_from_db()
@@ -207,11 +207,11 @@ class PostgresConcurrencyTests(TransactionTestCase):
 
 
     def test_concurrent_queue_refresh_appends_an_arrival_once(self):
-        session = learning.start_or_resume()
-        learning.reveal(session.response_token)
-        learning.answer(session.response_token, "know")
-        arrival = Word.objects.create(chunk="new queue arrival")
-        session_ids = self.run_together(lambda: learning.study_state()[0].pk)
+        session = learning.start_or_resume(OWNER_ACCOUNT_ID)
+        learning.reveal(OWNER_ACCOUNT_ID, session.response_token)
+        learning.answer(OWNER_ACCOUNT_ID, session.response_token, "know")
+        arrival = Word.objects.create(account_id=OWNER_ACCOUNT_ID, chunk="new queue arrival")
+        session_ids = self.run_together(lambda: learning.study_state(OWNER_ACCOUNT_ID)[0].pk)
         session.refresh_from_db()
         self.assertEqual(session_ids, [session.pk, session.pk])
         self.assertEqual(session.queue, [arrival.pk])

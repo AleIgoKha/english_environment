@@ -37,7 +37,9 @@ Store all values in the app service's Railway environment variables:
 | `DJANGO_SECRET_KEY` | A fresh, random production secret. |
 | `GOOGLE_CLIENT_ID` | Google Web application OAuth client ID. |
 | `GOOGLE_CLIENT_SECRET` | Google OAuth client secret, stored privately. |
-| `ALLOWED_GOOGLE_EMAIL` | Owner's permitted verified Google email. |
+| `ALLOWED_GOOGLE_EMAIL` | Verified Google email that binds the reserved owner account on first sign-in. |
+| `CARDY_PUBLIC_SIGN_IN` | Start with `false`. Enable only after the owner confirms the migrated collection. |
+| `CARDY_MAINTENANCE_MODE` | Start with `false`. Set to `true` during the account ownership migration. |
 | `DJANGO_LOCAL_TEST_LOGIN` | `false`; production cannot use local test access. |
 | `DJANGO_DEBUG` | `false` |
 | `DJANGO_ALLOWED_HOSTS` | `healthcheck.railway.app`; Railway's generated public domain is also added automatically. |
@@ -52,6 +54,14 @@ Store all values in the app service's Railway environment variables:
 Before publishing the Google sign-in update, configure the Google client and exact callback URLs following [README.md](README.md#google-sign-in-setup). Add the three Google variables to the existing app service without rotating its Django secret; keep `DJANGO_LOCAL_TEST_LOGIN=false`. Remove obsolete `APP_PIN_HASH` after rollout. Never copy `.env` or either local SQLite database into Railway. Changing Google credentials or the allowed email invalidates remembered access; words and study sessions remain.
 
 **Cardy release:** Google variables are configured privately on the app service using the existing Budget client; the owner confirmed adding Cardy's production callback URI. Local test sign-in is disabled in production. Verify Google sign-in with the owner after rollout. The historical production checks below refer to the previous PIN release.
+
+## Account ownership rollout
+
+1. Keep `CARDY_PUBLIC_SIGN_IN=false`. First deploy only the maintenance middleware and its settings on the old schema. Turn on `CARDY_MAINTENANCE_MODE` and verify that the maintenance deployment has replaced the old workers. Check that `/health/` returns 200 and browser, MCP, and MCP OAuth routes return 503. The ownership migration requires maintenance mode on Railway, but that check alone cannot confirm the old workers have stopped serving requests.
+2. Back up the dedicated Cardy PostgreSQL database while writes are paused. Verify the backup by restoring it to an isolated database. Record the owner’s card counts, review target, and active queue for the release check. Keep the backup and any private data outside the repository.
+3. Deploy the full release with maintenance mode still enabled. Railway's pre-deploy command applies the account migrations. When deployment and health checks pass, turn maintenance mode off with public sign-in still off. Sign in again with the configured owner Google account and verify the migrated collection, review target, unfinished study session, Undo availability, and existing Codex read and write connections. A valid, unexpired MCP OAuth grant must match the Google account bound in this step.
+4. Verify in Google Cloud Console that the OAuth configuration permits the intended audience and uses Cardy's exact production callback. Before changing shared Google configuration, verify its effect on Budget. Enable `CARDY_PUBLIC_SIGN_IN` and sign in with a second real Google account. Check that it starts empty and can add and study its own cards. A direct link to a card from the other account should return 404.
+5. If the public check fails, turn `CARDY_PUBLIC_SIGN_IN` off. This blocks new public sign-ins and existing public sessions while preserving saved data. If the owner check fails, re-enable maintenance mode before recovery. After the ownership migration, avoid redeploying pre-account code against the migrated database. Restoring a backup can discard later writes and requires a separate recovery decision.
 
 ## Verification
 

@@ -14,6 +14,9 @@ CARDY_MCP_TOKEN_SHA256 = ""
 CARDY_MCP_WRITE_TOKEN_SHA256 = ""
 CARDY_OAUTH_ENABLED = False
 CARDY_PUBLIC_URL = "https://testserver"
+CARDY_PUBLIC_SIGN_IN = False
+CARDY_MAINTENANCE_MODE = False
+RAILWAY_ENVIRONMENT_ID = ""
 
 DATABASES = {"default": {"ENGINE": "django.db.backends.sqlite3", "NAME": ":memory:"}}
 ALLOWED_HOSTS = ["testserver", "localhost"]

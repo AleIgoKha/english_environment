@@ -29,6 +29,7 @@
     <p class="field-help error" id="settings-save-error" role="alert" hidden></p>
   </form>
 </details>
+{% if can_connect_mcp %}
 <details class="panel settings-panel mcp-guide">
   <summary>Connect Codex</summary>
   <details class="mcp-connection">
@@ -42,6 +43,7 @@
     <p>Adding cards still requires your approval of the exact batch in the chat.</p>
   </details>
 </details>
+{% endif %}
 <div class="settings-logout">
   <form method="post" action="{% url 'logout' %}">{% csrf_token %}<button class="button button-primary" type="submit">Log out of this device</button></form>
 </div>

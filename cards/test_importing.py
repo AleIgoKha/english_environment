@@ -8,17 +8,14 @@ from django.urls import reverse
 from django.utils import timezone
 
 from . import importing
-from .models import Word, WordImport
-from .security import auth_version
-from .tests import GOOGLE_SETTINGS
+from .models import OWNER_ACCOUNT_ID, Word, WordImport
+from .tests import GOOGLE_SETTINGS, login_owner
 
 
 @override_settings(**GOOGLE_SETTINGS)
 class CsvImportTests(TestCase):
     def setUp(self):
-        session = self.client.session
-        session.update({"auth_kind": "google", "google_email": "owner@example.test", "google_subject": "owner", "auth_version": auth_version()})
-        session.save()
+        login_owner(self.client, "owner")
 
     def upload(self, content, name="words.csv"):
         if isinstance(content, str):
@@ -80,7 +77,7 @@ class CsvImportTests(TestCase):
         self.assertEqual(Word.objects.count(), 1)
 
     def test_duplicates_preserve_existing_content_and_progress(self):
-        existing = Word.objects.create(chunk="Take your time", meaning="original", stage=5, archived_at=timezone.now())
+        existing = Word.objects.create(account_id=OWNER_ACCOUNT_ID, chunk="Take your time", meaning="original", stage=5, archived_at=timezone.now())
         response = self.upload('front,back\n TAKE   YOUR TIME ,replacement\nnew chunk,first\nNEW CHUNK,second\n')
         url = response["Location"]
         preview = self.client.get(url)
@@ -97,7 +94,7 @@ class CsvImportTests(TestCase):
     def test_duplicates_added_after_preview_are_skipped_at_confirmation(self):
         response = self.upload('Chunk\nhello\nhello\n')
         self.assertEqual(self.client.get(response["Location"]).context["add_count"], 1)
-        existing = Word.objects.create(chunk="hello", stage=2)
+        existing = Word.objects.create(account_id=OWNER_ACCOUNT_ID, chunk="hello", stage=2)
         self.client.post(response["Location"])
         self.assertEqual(Word.objects.filter(chunk="hello").count(), 1)
         existing.refresh_from_db()
@@ -138,16 +135,13 @@ class CsvImportTests(TestCase):
             self.assertContains(self.upload('Chunk\none\ntwo\nthree\n'), "no more than 1,000", status_code=400)
         self.assertFalse(WordImport.objects.exists())
 
-    def test_preview_is_private_to_its_authenticated_browser_session(self):
+    def test_preview_can_resume_in_another_browser_signed_in_to_the_same_account(self):
         response = self.upload('Chunk\nprivate chunk\n')
         url = response["Location"]
         other = Client()
-        session = other.session
-        session.update(dict(self.client.session))
-        session.pop("word_import_id")
-        session.save()
-        self.assertEqual(other.get(url).status_code, 404)
-        self.assertEqual(other.post(url).status_code, 404)
+        login_owner(other)
+        self.assertContains(other.get(url), "private chunk")
+        self.assertRedirects(other.post(url), url)
         self.assertRedirects(Client().get(url), reverse("login"))
         self.assertRedirects(Client().post(reverse("word-import")), reverse("login"))
         self.assertEqual(Client(enforce_csrf_checks=True).post(url).status_code, 403)
@@ -169,7 +163,7 @@ class CsvImportTests(TestCase):
             raise RuntimeError("Simulated database failure")
         with patch("cards.importing.Word.objects.bulk_create", side_effect=fail_after_first_word):
             with self.assertRaises(RuntimeError):
-                importing.confirm_import(batch.pk)
+                importing.confirm_import(OWNER_ACCOUNT_ID, batch.pk)
         self.assertFalse(Word.objects.exists())
         batch.refresh_from_db()
         self.assertIsNone(batch.imported_at)

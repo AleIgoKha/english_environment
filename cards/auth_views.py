@@ -12,7 +12,11 @@ from django.views.decorators.http import require_POST, require_safe
 from joserfc.errors import JoseError
 from requests import RequestException
 
-from .security import auth_version, google_configured, is_authenticated, local_request, local_test_login_enabled
+from .models import Account, LearningSettings, LOCAL_TEST_ACCOUNT_ID, OWNER_ACCOUNT_ID
+from .security import (
+    auth_version, google_configured, is_authenticated, local_request, local_test_login_enabled,
+    public_sign_in_enabled,
+)
 
 
 def google_client():
@@ -46,6 +50,7 @@ def local_test_login(request):
         raise Http404
     request.session.flush()
     request.session["auth_kind"] = "local-test"
+    request.session["account_id"] = str(LOCAL_TEST_ACCOUNT_ID)
     rotate_token(request)
     return redirect("home")
 
@@ -74,14 +79,25 @@ def google_callback(request):
         # Authlib verifies state, signature, issuer, audience, expiry and nonce.
         token = google_client().authorize_access_token(request)
         info = token.get("userinfo", {})
-        email = str(info.get("email", "")).strip().lower()
+        email = info.get("email")
         subject = info.get("sub")
-        if not isinstance(subject, str) or not subject or info.get("email_verified") is not True or email != settings.ALLOWED_GOOGLE_EMAIL:
+        if (not isinstance(subject, str) or not subject or len(subject) > 255
+                or not isinstance(email, str) or not email.strip() or info.get("email_verified") is not True):
             raise ValueError("Account not permitted")
+        email = email.strip().lower()
+        if email == settings.ALLOWED_GOOGLE_EMAIL and not settings.CARDY_PUBLIC_SIGN_IN:
+            Account.objects.filter(pk=OWNER_ACCOUNT_ID, google_subject__isnull=True).update(google_subject=subject)
+        if public_sign_in_enabled():
+            account, _ = Account.objects.get_or_create(google_subject=subject)
+        else:
+            account = Account.objects.filter(pk=OWNER_ACCOUNT_ID, google_subject=subject).first()
+            if account is None:
+                raise ValueError("Account not permitted")
+        LearningSettings.objects.get_or_create(account=account)
         oauth_query = request.session.pop("oauth_authorize_query", None)
         request.session.flush()
         request.session.update({
-            "auth_kind": "google", "google_email": email,
+            "auth_kind": "google", "account_id": str(account.pk),
             "google_subject": subject, "auth_version": auth_version(),
         })
         rotate_token(request)

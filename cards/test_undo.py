@@ -8,28 +8,25 @@ from django.urls import reverse
 from django.utils import timezone
 
 from . import learning
-from .models import LearningSettings, StudyReview, StudySession, Word
-from .security import auth_version
-from .tests import GOOGLE_SETTINGS
+from .models import OWNER_ACCOUNT_ID, LearningSettings, StudyReview, StudySession, Word
+from .tests import GOOGLE_SETTINGS, login_owner
 
 
 @override_settings(**GOOGLE_SETTINGS)
 class UndoTests(TestCase):
     def setUp(self):
-        session = self.client.session
-        session.update({"auth_kind": "google", "google_email": "owner@example.test", "google_subject": "test-owner", "auth_version": auth_version()})
-        session.save()
+        login_owner(self.client, "test-owner")
 
     def respond(self, choice):
-        session = learning.active_session()
-        learning.reveal(session.response_token)
-        learning.answer(session.response_token, choice)
+        session = learning.active_session(OWNER_ACCOUNT_ID)
+        learning.reveal(OWNER_ACCOUNT_ID, session.response_token)
+        learning.answer(OWNER_ACCOUNT_ID, session.response_token, choice)
         session.refresh_from_db()
         return session
 
     def undo(self, session):
         session.refresh_from_db()
-        learning.undo(session.response_token)
+        learning.undo(OWNER_ACCOUNT_ID, session.response_token)
         session.refresh_from_db()
         return session
 
@@ -38,10 +35,10 @@ class UndoTests(TestCase):
             with self.subTest(choice=choice):
                 StudySession.objects.all().delete()
                 Word.objects.all().delete()
-                word = Word.objects.create(chunk="chosen", stage=3, due_at=timezone.now()-timedelta(days=3))
-                other = Word.objects.create(chunk="other")
+                word = Word.objects.create(account_id=OWNER_ACCOUNT_ID, chunk="chosen", stage=3, due_at=timezone.now()-timedelta(days=3))
+                other = Word.objects.create(account_id=OWNER_ACCOUNT_ID, chunk="other")
                 before = learning.word_progress(word)
-                session = learning.start_or_resume()
+                session = learning.start_or_resume(OWNER_ACCOUNT_ID)
                 queue = list(session.queue)
                 self.respond(choice)
                 self.assertTrue(learning.can_undo(session))
@@ -58,9 +55,9 @@ class UndoTests(TestCase):
                 self.assertEqual(other.stage, 0)
 
     def test_multiple_undos_restore_repeated_responses_and_setbacks(self):
-        word = Word.objects.create(chunk="practice", stage=3)
+        word = Word.objects.create(account_id=OWNER_ACCOUNT_ID, chunk="practice", stage=3)
         original = learning.word_progress(word)
-        session = learning.start_or_resume()
+        session = learning.start_or_resume(OWNER_ACCOUNT_ID)
         self.respond("repeat")
         first = StudyReview.objects.latest("pk")
         self.respond("dont_know")
@@ -80,8 +77,8 @@ class UndoTests(TestCase):
         self.assertEqual(StudyReview.objects.count(), 0)
 
     def test_undo_while_waiting_restores_learned_word(self):
-        word = Word.objects.create(chunk="almost learned", stage=4)
-        session = learning.start_or_resume()
+        word = Word.objects.create(account_id=OWNER_ACCOUNT_ID, chunk="almost learned", stage=4)
+        session = learning.start_or_resume(OWNER_ACCOUNT_ID)
         self.assertNotContains(self.client.get(reverse("study")), '>Undo</button>')
         self.respond("know")
         word.refresh_from_db()
@@ -99,9 +96,9 @@ class UndoTests(TestCase):
         self.assertContains(self.client.get(reverse("study")), "almost learned")
 
     def test_undo_stack_survives_reopening_browser(self):
-        first = Word.objects.create(chunk="first")
-        second = Word.objects.create(chunk="second")
-        session = learning.start_or_resume()
+        first = Word.objects.create(account_id=OWNER_ACCOUNT_ID, chunk="first")
+        second = Word.objects.create(account_id=OWNER_ACCOUNT_ID, chunk="second")
+        session = learning.start_or_resume(OWNER_ACCOUNT_ID)
         self.respond("know")
         self.respond("know")
         reopened = Client()
@@ -115,17 +112,17 @@ class UndoTests(TestCase):
         self.assertFalse(StudyReview.objects.exists())
 
     def test_duplicate_undo_and_stale_answer_cannot_apply_twice(self):
-        first = Word.objects.create(chunk="first")
-        second = Word.objects.create(chunk="second")
-        session = learning.start_or_resume()
+        first = Word.objects.create(account_id=OWNER_ACCOUNT_ID, chunk="first")
+        second = Word.objects.create(account_id=OWNER_ACCOUNT_ID, chunk="second")
+        session = learning.start_or_resume(OWNER_ACCOUNT_ID)
         self.respond("know")
         self.respond("know")
         session.refresh_from_db()
         token = session.response_token
-        learning.undo(token)
+        learning.undo(OWNER_ACCOUNT_ID, token)
         restored_token = StudySession.objects.get(pk=session.pk).response_token
-        learning.undo(token)
-        learning.answer(token, "know")
+        learning.undo(OWNER_ACCOUNT_ID, token)
+        learning.answer(OWNER_ACCOUNT_ID, token, "know")
         session.refresh_from_db()
         self.assertEqual(session.response_token, restored_token)
         self.assertEqual(session.queue, [second.pk])
@@ -136,12 +133,12 @@ class UndoTests(TestCase):
         self.assertEqual(first.stage, 1)
 
     def test_answering_again_after_undo_creates_a_new_branch(self):
-        word = Word.objects.create(chunk="choose again", stage=3)
-        session = learning.start_or_resume()
+        word = Word.objects.create(account_id=OWNER_ACCOUNT_ID, chunk="choose again", stage=3)
+        session = learning.start_or_resume(OWNER_ACCOUNT_ID)
         self.respond("dont_know")
         self.undo(session)
-        learning.reveal(session.response_token)
-        learning.answer(session.response_token, "know")
+        learning.reveal(OWNER_ACCOUNT_ID, session.response_token)
+        learning.answer(OWNER_ACCOUNT_ID, session.response_token, "know")
         word.refresh_from_db()
         self.assertEqual(word.stage, 4)
         self.assertEqual(StudyReview.objects.count(), 1)
@@ -150,36 +147,36 @@ class UndoTests(TestCase):
         self.assertEqual(word.stage, 3)
 
     def test_resuming_waiting_session_keeps_history_but_invalidates_old_forms(self):
-        first = Word.objects.create(chunk="first")
-        session = learning.start_or_resume()
+        first = Word.objects.create(account_id=OWNER_ACCOUNT_ID, chunk="first")
+        session = learning.start_or_resume(OWNER_ACCOUNT_ID)
         self.respond("know")
         old_token = StudySession.objects.get(pk=session.pk).response_token
-        second = Word.objects.create(chunk="second")
-        new_session = learning.start_or_resume()
+        second = Word.objects.create(account_id=OWNER_ACCOUNT_ID, chunk="second")
+        new_session = learning.start_or_resume(OWNER_ACCOUNT_ID)
         self.assertTrue(learning.can_undo(new_session))
         self.assertEqual(new_session.pk, session.pk)
-        learning.undo(old_token)
+        learning.undo(OWNER_ACCOUNT_ID, old_token)
         first.refresh_from_db()
         self.assertEqual(first.stage, 1)
-        self.assertEqual(learning.active_session().queue, [second.pk])
+        self.assertEqual(learning.active_session(OWNER_ACCOUNT_ID).queue, [second.pk])
 
     def test_undo_preserves_text_edits_and_current_settings(self):
-        word = Word.objects.create(chunk="old text", stage=3)
-        session = learning.start_or_resume()
+        word = Word.objects.create(account_id=OWNER_ACCOUNT_ID, chunk="old text", stage=3)
+        session = learning.start_or_resume(OWNER_ACCOUNT_ID)
         self.respond("know")
         self.client.post(reverse("word-edit", args=[word.pk]), {"chunk": "new text", "meaning": "new meaning"})
-        learning.change_target(2)
+        learning.change_target(OWNER_ACCOUNT_ID, 2)
         self.undo(session)
         word.refresh_from_db()
         self.assertEqual((word.chunk, word.meaning, word.stage), ("new text", "new meaning", 3))
-        self.assertEqual(LearningSettings.objects.get(pk=1).review_target, 2)
+        self.assertEqual(LearningSettings.objects.get(account_id=OWNER_ACCOUNT_ID).review_target, 2)
 
     def test_reset_clears_history_but_outside_deletion_keeps_other_undo(self):
-        first = Word.objects.create(chunk="first")
-        second = Word.objects.create(chunk="second")
-        session = learning.start_or_resume()
+        first = Word.objects.create(account_id=OWNER_ACCOUNT_ID, chunk="first")
+        second = Word.objects.create(account_id=OWNER_ACCOUNT_ID, chunk="second")
+        session = learning.start_or_resume(OWNER_ACCOUNT_ID)
         self.respond("know")
-        learning.reset_word(first.pk)
+        learning.reset_word(OWNER_ACCOUNT_ID, first.pk)
         self.assertFalse(StudyReview.objects.exists())
         self.respond("know")
         self.assertTrue(StudyReview.objects.exists())
@@ -191,10 +188,10 @@ class UndoTests(TestCase):
         self.assertEqual(second.stage, 0)
 
     def test_delete_during_learning_shows_undo_and_restores_deleted_card(self):
-        first = Word.objects.create(chunk="delete from Learning", meaning="keep reverse", stage=3)
-        other = Word.objects.create(chunk="next card")
+        first = Word.objects.create(account_id=OWNER_ACCOUNT_ID, chunk="delete from Learning", meaning="keep reverse", stage=3)
+        other = Word.objects.create(account_id=OWNER_ACCOUNT_ID, chunk="next card")
         before = learning.word_progress(first)
-        session = learning.start_or_resume()
+        session = learning.start_or_resume(OWNER_ACCOUNT_ID)
         page = self.client.post(reverse("word-delete", args=[first.pk]), {"return_to": "study"}, follow=True)
         self.assertFalse(Word.objects.filter(pk=first.pk).exists())
         self.assertContains(page, '>Undo</button>')
@@ -209,8 +206,8 @@ class UndoTests(TestCase):
         self.assertFalse(session.revealed)
 
     def test_undo_last_card_deletion_is_available_while_waiting_and_survives_reopen(self):
-        word = Word.objects.create(chunk="last card")
-        session = learning.start_or_resume()
+        word = Word.objects.create(account_id=OWNER_ACCOUNT_ID, chunk="last card")
+        session = learning.start_or_resume(OWNER_ACCOUNT_ID)
         page = self.client.post(reverse("word-delete", args=[word.pk]), {"return_to": "study"}, follow=True)
         self.assertContains(page, "Well done!")
         self.assertContains(page, '>Undo</button>')
@@ -229,9 +226,9 @@ class UndoTests(TestCase):
         self.assertFalse(StudyReview.objects.exists())
 
     def test_undo_learning_deletion_then_previous_answer(self):
-        first = Word.objects.create(chunk="answered first")
-        second = Word.objects.create(chunk="deleted second")
-        session = learning.start_or_resume()
+        first = Word.objects.create(account_id=OWNER_ACCOUNT_ID, chunk="answered first")
+        second = Word.objects.create(account_id=OWNER_ACCOUNT_ID, chunk="deleted second")
+        session = learning.start_or_resume(OWNER_ACCOUNT_ID)
         self.respond("know")
         self.client.post(reverse("word-delete", args=[second.pk]), {"return_to": "study"})
         self.assertEqual(StudyReview.objects.count(), 2)
@@ -243,9 +240,9 @@ class UndoTests(TestCase):
         self.assertEqual(first.stage, 0)
 
     def test_outside_deletion_skips_latest_answer_and_undoes_previous_card(self):
-        first = Word.objects.create(chunk="keep undo for first")
-        second = Word.objects.create(chunk="deleted outside Learning")
-        session = learning.start_or_resume()
+        first = Word.objects.create(account_id=OWNER_ACCOUNT_ID, chunk="keep undo for first")
+        second = Word.objects.create(account_id=OWNER_ACCOUNT_ID, chunk="deleted outside Learning")
+        session = learning.start_or_resume(OWNER_ACCOUNT_ID)
         self.respond("know")
         self.respond("know")
         self.client.post(reverse("word-delete", args=[second.pk]))
@@ -259,11 +256,11 @@ class UndoTests(TestCase):
         self.assertFalse(Word.objects.filter(pk=second.pk).exists())
 
     def test_bulk_deletion_outside_learning_preserves_other_history(self):
-        first = Word.objects.create(chunk="delete first")
-        second = Word.objects.create(chunk="keep second")
-        third = Word.objects.create(chunk="delete third")
-        fourth = Word.objects.create(chunk="still learning")
-        session = learning.start_or_resume()
+        first = Word.objects.create(account_id=OWNER_ACCOUNT_ID, chunk="delete first")
+        second = Word.objects.create(account_id=OWNER_ACCOUNT_ID, chunk="keep second")
+        third = Word.objects.create(account_id=OWNER_ACCOUNT_ID, chunk="delete third")
+        fourth = Word.objects.create(account_id=OWNER_ACCOUNT_ID, chunk="still learning")
+        session = learning.start_or_resume(OWNER_ACCOUNT_ID)
         for _ in range(3):
             self.respond("know")
         self.client.post(reverse("word-bulk"), {"action": "delete", "confirmed": "yes",
@@ -274,9 +271,9 @@ class UndoTests(TestCase):
         self.assertEqual(Word.all_objects.filter(deleted_at__isnull=False).count(), 2)
 
     def test_undo_skips_directly_deleted_word_without_discarding_earlier_history(self):
-        first = Word.objects.create(chunk="valid earlier action")
-        second = Word.objects.create(chunk="deleted externally")
-        session = learning.start_or_resume()
+        first = Word.objects.create(account_id=OWNER_ACCOUNT_ID, chunk="valid earlier action")
+        second = Word.objects.create(account_id=OWNER_ACCOUNT_ID, chunk="deleted externally")
+        session = learning.start_or_resume(OWNER_ACCOUNT_ID)
         self.respond("know")
         self.respond("know")
         second.delete()
@@ -286,8 +283,8 @@ class UndoTests(TestCase):
         self.assertFalse(StudyReview.objects.exists())
 
     def test_outside_progress_changes_are_not_overwritten(self):
-        word = Word.objects.create(chunk="changed")
-        session = learning.start_or_resume()
+        word = Word.objects.create(account_id=OWNER_ACCOUNT_ID, chunk="changed")
+        session = learning.start_or_resume(OWNER_ACCOUNT_ID)
         self.respond("know")
         Word.objects.filter(pk=word.pk).update(stage=3)
         self.undo(session)
@@ -296,14 +293,14 @@ class UndoTests(TestCase):
         self.assertFalse(StudyReview.objects.exists())
 
     def test_undo_rollback_does_not_lose_history(self):
-        word = Word.objects.create(chunk="atomic undo")
-        session = learning.start_or_resume()
+        word = Word.objects.create(account_id=OWNER_ACCOUNT_ID, chunk="atomic undo")
+        session = learning.start_or_resume(OWNER_ACCOUNT_ID)
         self.respond("know")
         session.refresh_from_db()
         token = session.response_token
         with patch("cards.learning.StudySession.save", side_effect=RuntimeError("simulated failure")):
             with self.assertRaises(RuntimeError):
-                learning.undo(token)
+                learning.undo(OWNER_ACCOUNT_ID, token)
         word.refresh_from_db()
         self.assertEqual(word.stage, 1)
         self.assertEqual(StudySession.objects.get(pk=session.pk).response_token, token)
@@ -319,8 +316,8 @@ class UndoTests(TestCase):
 
 
     def test_undo_returns_to_hidden_answer_and_requires_reveal_again(self):
-        word = Word.objects.create(chunk="remember", meaning="hidden meaning", example="hidden example")
-        session = learning.start_or_resume()
+        word = Word.objects.create(account_id=OWNER_ACCOUNT_ID, chunk="remember", meaning="hidden meaning", example="hidden example")
+        session = learning.start_or_resume(OWNER_ACCOUNT_ID)
         self.respond("know")
         session.refresh_from_db()
         page = self.client.post(reverse("study-undo"), {"response_token": session.response_token}, follow=True)
@@ -328,7 +325,7 @@ class UndoTests(TestCase):
         self.assertNotContains(page, "hidden meaning")
         self.assertNotContains(page, "hidden example")
         session.refresh_from_db()
-        learning.answer(session.response_token, "know")
+        learning.answer(OWNER_ACCOUNT_ID, session.response_token, "know")
         word.refresh_from_db()
         self.assertEqual(word.stage, 0)
         self.respond("know")

@@ -1,6 +1,6 @@
 # Cardy
 
-A private English flashcard app with owner-only Google sign-in, a purple desktop and iPhone layout, word management, progress filters, and persistent spaced-repetition sessions. Django renders the pages; SQLite supports local development and PostgreSQL stores production data on Railway.
+An English flashcard app with Google sign-in, private card collections, and persistent spaced-repetition sessions. Django renders the pages, SQLite supports local development, and PostgreSQL stores production data on Railway.
 
 ## Local setup (Windows PowerShell)
 
@@ -21,7 +21,7 @@ Open the URL saved in `LOCAL_DEV_URL` in your ignored `.env` and choose **Contin
 
 Test mode uses a separate `db.local-test.sqlite3` deck; the original `db.sqlite3` is preserved. All local databases and `.env` are ignored by Git and excluded from the deployment image. Test sign-in requires debug mode, explicit `DJANGO_LOCAL_TEST_LOGIN=true`, a local database, a loopback or configured private Wi-Fi connection, and no Railway environment. Anyone on that configured subnet can use the local test deck while enabled. Disabling test access revokes existing test sessions.
 
-To inspect the original local deck, set `DJANGO_LOCAL_TEST_LOGIN=false`, configure Google sign-in, run migrations, and restart the server. When test mode is enabled, Google login also uses the test database.
+To inspect the original local deck, set `DJANGO_LOCAL_TEST_LOGIN=false`, configure Google sign-in, run migrations, and restart the server. When test mode is enabled, Google accounts and the local test account use separate collections inside the test database.
 
 ## Google sign-in setup
 
@@ -32,9 +32,9 @@ Add these exact **Authorized redirect URIs**, including trailing slashes. These 
 - `http://127.0.0.1:8000/auth/google/callback/`
 - `https://english-environment-production.up.railway.app/auth/google/callback/`
 
-Store `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and `ALLOWED_GOOGLE_EMAIL` privately in `.env` for local Google testing and in Railway variables before publishing this update. Only the configured verified email can access the shared deck. Never paste client secrets into chat. See [Google's OpenID Connect guide](https://developers.google.com/identity/openid-connect/openid-connect).
+Store `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and `ALLOWED_GOOGLE_EMAIL` privately in `.env` for local Google testing and in Railway variables before publishing this update. The first verified sign-in matching the configured email binds the owner collection to that Google account. Never paste client secrets into chat. See [Google's OpenID Connect guide](https://developers.google.com/identity/openid-connect/openid-connect).
 
-Configure the Google variables before publishing. Production Google access is restricted to the configured owner, and local test access is always disabled on Railway.
+With `CARDY_PUBLIC_SIGN_IN=false`, Google sign-in is owner-only. After the owner has signed in, setting it to `true` allows verified Google users to create a private collection on their first sign-in. See the [Railway rollout steps](DEPLOYMENT.md#account-ownership-rollout).
 
 ## Learning rules
 
@@ -72,7 +72,9 @@ digest is configured. See [MCP.md](MCP.md) for behavior, private access, and tes
 | `DJANGO_SECRET_KEY` | Random secret; mandatory, never commit it. |
 | `GOOGLE_CLIENT_ID` | Google Web application OAuth client ID. |
 | `GOOGLE_CLIENT_SECRET` | Google OAuth client secret. |
-| `ALLOWED_GOOGLE_EMAIL` | Permitted verified owner email. |
+| `ALLOWED_GOOGLE_EMAIL` | Verified email used to bind the owner collection during the first sign-in. |
+| `CARDY_PUBLIC_SIGN_IN` | Defaults to `false`. Enables public Google sign-in after the owner is bound. |
+| `CARDY_MAINTENANCE_MODE` | Defaults to `false`. Pauses web and MCP access during production migration. |
 | `CARDY_MCP_TOKEN_SHA256` | Optional SHA-256 digest of the read-only MCP bearer token; blank disables phrase checks. |
 | `CARDY_MCP_WRITE_TOKEN_SHA256` | Separate optional add-cards credential digest; blank disables add-cards access. |
 | `DJANGO_DEBUG` | `true` locally only; defaults to `false`. |
