@@ -19,6 +19,8 @@ DEBUG = os.environ.get("DJANGO_DEBUG", "false").lower() == "true"
 GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "").strip()
 GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET", "").strip()
 ALLOWED_GOOGLE_EMAIL = os.environ.get("ALLOWED_GOOGLE_EMAIL", "").strip().lower()
+CARDY_PUBLIC_SIGN_IN = os.environ.get("CARDY_PUBLIC_SIGN_IN", "false").lower() == "true"
+CARDY_MAINTENANCE_MODE = os.environ.get("CARDY_MAINTENANCE_MODE", "false").lower() == "true"
 CARDY_MCP_TOKEN_SHA256 = os.environ.get("CARDY_MCP_TOKEN_SHA256", "").strip().lower()
 CARDY_MCP_WRITE_TOKEN_SHA256 = os.environ.get("CARDY_MCP_WRITE_TOKEN_SHA256", "").strip().lower()
 CARDY_OAUTH_ENABLED = os.environ.get("CARDY_OAUTH_ENABLED", "false").lower() == "true"
@@ -65,6 +67,7 @@ MIDDLEWARE = [
     "whitenoise.middleware.WhiteNoiseMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
+    "cards.maintenance.pause_cardy",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
